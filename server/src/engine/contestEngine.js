@@ -4,18 +4,18 @@ const SKILL_EFFECTS = {
   focus_boost: {
     id: 'focus_boost',
     name: '聚焦增强',
-    description: '临时提升声波强度20%，持续10秒',
+    description: '临时提升声波强度30%，持续10秒',
     cooldown: 30,
     duration: 10,
-    effect: { intensityMultiplier: 1.2 }
+    effect: { intensityMultiplier: 1.3 }
   },
   interference_pulse: {
     id: 'interference_pulse',
     name: '干扰脉冲',
-    description: '降低对手声波强度15%，持续8秒',
+    description: '降低对手声波强度30%，持续8秒',
     cooldown: 45,
     duration: 8,
-    effect: { opponentDebuff: 0.85 }
+    effect: { opponentDebuff: 0.7 }
   }
 };
 

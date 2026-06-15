@@ -29,7 +29,7 @@ export const fetchCurrentContest = createAsyncThunk('contest/current', async () 
 });
 
 export const joinContest = createAsyncThunk('contest/join', async (detectorId: string) => {
-  const response = await api.post('/contest/join', { detectorId });
+  const response = await api.post('/contest/join', { detector_id: detectorId });
   return response.data;
 });
 
@@ -86,6 +86,10 @@ const contestSlice = createSlice({
         state.currentContest = action.payload.contest;
         state.userEntry = action.payload.userEntry;
         state.standings = action.payload.standings || [];
+        if (action.payload.userEntry?.activeBuffs) {
+          const now = Date.now();
+          state.activeBuffs = action.payload.userEntry.activeBuffs.filter((b: any) => b.endTime > now);
+        }
       })
       .addCase(fetchContestHistory.fulfilled, (state, action) => {
         state.history = action.payload;

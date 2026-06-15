@@ -20,6 +20,7 @@ class GameEngine {
     this.db = getDb();
     await this.loadActiveCraftingTasks();
     await this.checkDailyContest();
+    this.loadActiveBuffs();
     console.log('✅ 游戏引擎初始化完成');
   }
 
@@ -252,6 +253,22 @@ class GameEngine {
     }
   }
 
+  loadActiveBuffs() {
+    const entries = this.db.prepare('SELECT * FROM contest_entries').all();
+    const now = Date.now();
+    entries.forEach(entry => {
+      if (entry.active_buffs) {
+        try {
+          const buffs = JSON.parse(typeof entry.active_buffs === 'string' ? entry.active_buffs : '[]');
+          const activeBuffs = buffs.filter(b => b.endTime > now);
+          if (activeBuffs.length > 0) {
+            this.entryBuffs.set(entry.id, activeBuffs);
+          }
+        } catch (e) {}
+      }
+    });
+  }
+
   updateContestScores(contestId) {
     const entries = this.db.prepare(`
       SELECT * FROM contest_entries WHERE contest_id = ?
@@ -265,7 +282,8 @@ class GameEngine {
       const detector = this.db.prepare('SELECT * FROM detectors WHERE id = ?').get(entry.detector_id);
       if (!detector) return;
       
-      const timeElapsed = (now - entry.submitted_at) / 1000;
+      const submittedAt = entry.submitted_at || entry.joined_at || now;
+      const timeElapsed = (now - submittedAt) / 1000;
       const waveData = contestEngine.generateSoundWaveData(detector, timeElapsed);
       
       let intensity = waveData.intensity;
@@ -287,7 +305,8 @@ class GameEngine {
       this.db.prepare(`
         UPDATE contest_entries 
         SET score = ?, current_intensity = ?, audience_resonance = ?,
-            rarity_score = ?, frequency_score = ?, intensity_score = ?
+            rarity_score = ?, frequency_score = ?, intensity_score = ?,
+            active_buffs = ?, submitted_at = ?
         WHERE id = ?
       `).run(
         totalScore, 
@@ -296,6 +315,8 @@ class GameEngine {
         baseScore.rarity,
         baseScore.frequency,
         baseScore.intensity,
+        JSON.stringify(activeBuffs),
+        submittedAt,
         entry.id
       );
     });
@@ -353,6 +374,8 @@ class GameEngine {
         endTime: now + skill.duration * 1000
       });
       this.entryBuffs.set(entry.id, currentBuffs);
+      this.db.prepare('UPDATE contest_entries SET active_buffs = ? WHERE id = ?')
+        .run(JSON.stringify(currentBuffs), entry.id);
       
     } else if (skillType === 'interference_pulse' && targetEntryId) {
       targetEntry = this.db.prepare('SELECT * FROM contest_entries WHERE id = ?').get(targetEntryId);
@@ -372,6 +395,8 @@ class GameEngine {
         endTime: now + skill.duration * 1000
       });
       this.entryBuffs.set(targetEntryId, targetBuffs);
+      this.db.prepare('UPDATE contest_entries SET active_buffs = ? WHERE id = ?')
+        .run(JSON.stringify(targetBuffs), targetEntryId);
     }
     
     if (global.io) {
@@ -461,8 +486,8 @@ class GameEngine {
 
     this.db.prepare(`
       INSERT INTO contest_entries 
-      (id, contest_id, player_id, detector_id, sound_wave_data, score, rarity_score, frequency_score, intensity_score, current_intensity, submitted_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, contest_id, player_id, detector_id, sound_wave_data, score, rarity_score, frequency_score, intensity_score, current_intensity, submitted_at, active_buffs)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       entryId,
       contestId,
@@ -474,7 +499,8 @@ class GameEngine {
       baseScore.frequency,
       baseScore.intensity,
       soundWaveData.intensity,
-      Date.now()
+      Date.now(),
+      '[]'
     );
 
     this.db.prepare(`
@@ -539,7 +565,7 @@ class GameEngine {
 
       if (listing.item_type === 'detector') {
         this.db.prepare(`
-          UPDATE detectors SET player_id = ?, is_tradable = 0 
+          UPDATE detectors SET player_id = ?
           WHERE id = ?
         `).run(buyerId, listing.item_id);
       } else if (listing.item_type === 'material') {

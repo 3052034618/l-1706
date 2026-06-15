@@ -439,9 +439,15 @@ function prepare(sql) {
               
               const hasPlaceholder = expr.includes('?');
               
+              const fieldOpMatch = !hasPlaceholder && expr.match(/^(\w+)\s*([+\-*/])\s*(\d+\.?\d*)$/);
+              
               return { 
                 field, 
                 isParam: hasPlaceholder, 
+                isFieldOp: !!fieldOpMatch,
+                fieldOpSource: fieldOpMatch ? fieldOpMatch[1] : null,
+                fieldOpOperator: fieldOpMatch ? fieldOpMatch[2] : null,
+                fieldOpLiteral: fieldOpMatch ? parseFloat(fieldOpMatch[3]) : null,
                 expression: hasPlaceholder ? expr : null,
                 value: hasPlaceholder ? null : expr
               };
@@ -454,7 +460,8 @@ function prepare(sql) {
             const whereParts = whereMatch[1].split(/\s+AND\s+/i);
             let whereParamIdx = 0;
             whereConditions = whereParts.map(part => {
-              const [field, op, ...rest] = part.trim().split(/\s+/);
+              const [fieldRaw, op, ...rest] = part.trim().split(/\s+/);
+              const field = fieldRaw.includes('.') ? fieldRaw.split('.').pop() : fieldRaw;
               const val = rest.join(' ');
               if (val === '?') {
                 const paramIdx = setParamCount + whereParamIdx;
@@ -507,11 +514,9 @@ function prepare(sql) {
                   } else {
                     const placeholderIdx = expr.indexOf('?');
                     const beforePlaceholder = expr.substring(0, placeholderIdx).trim();
-                    const afterPlaceholder = expr.substring(placeholderIdx + 1).trim();
                     
                     let fieldName = null;
                     let operator = null;
-                    let constValue = null;
                     
                     const addMatch = beforePlaceholder.match(/^(\w+)\s*\+$/);
                     const subMatch = beforePlaceholder.match(/^(\w+)\s*-$/);
@@ -534,6 +539,15 @@ function prepare(sql) {
                     } else {
                       row[setField.field] = paramValue;
                     }
+                  }
+                } else if (setField.isFieldOp) {
+                  const currentValue = row[setField.fieldOpSource] || 0;
+                  const literal = setField.fieldOpLiteral;
+                  switch (setField.fieldOpOperator) {
+                    case '+': row[setField.field] = currentValue + literal; break;
+                    case '-': row[setField.field] = currentValue - literal; break;
+                    case '*': row[setField.field] = currentValue * literal; break;
+                    case '/': row[setField.field] = literal !== 0 ? currentValue / literal : 0; break;
                   }
                 } else if (!isNaN(parseFloat(setField.value)) && setField.value !== '') {
                   row[setField.field] = parseFloat(setField.value);

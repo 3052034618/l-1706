@@ -93,8 +93,17 @@ router.post('/list', authMiddleware, (req, res) => {
       SELECT * FROM detectors WHERE id = ? AND player_id = ?
     `).get(itemId, req.userId);
     
-    if (!detector || !detector.is_tradable) {
-      return res.status(400).json({ error: '该探测器不可交易' });
+    if (!detector) {
+      return res.status(400).json({ error: '探测器不存在' });
+    }
+    
+    const existingListing = db.prepare(`
+      SELECT * FROM market_listings 
+      WHERE item_id = ? AND status = 'active'
+    `).get(itemId);
+    
+    if (existingListing) {
+      return res.status(400).json({ error: '该探测器已在上架中' });
     }
   }
   
@@ -109,8 +118,6 @@ router.post('/list', authMiddleware, (req, res) => {
         SET quantity = quantity - ?
         WHERE player_id = ? AND material_id = ?
       `).run(itemData?.quantity || 1, req.userId, itemId);
-    } else if (itemType === 'detector') {
-      db.prepare('UPDATE detectors SET is_tradable = 0 WHERE id = ?').run(itemId);
     }
     
     db.prepare(`
@@ -174,8 +181,6 @@ router.post('/cancel/:listingId', authMiddleware, (req, res) => {
           VALUES (?, ?, ?, ?, ?)
         `).run(uuid(), req.userId, listing.item_id, itemData?.quantity || 1, itemData?.quality || 50);
       }
-    } else if (listing.item_type === 'detector') {
-      db.prepare('UPDATE detectors SET is_tradable = 1 WHERE id = ?').run(listing.item_id);
     }
   });
   

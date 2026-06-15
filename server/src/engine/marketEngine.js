@@ -6,27 +6,27 @@ function calculateSuggestedPrice(itemType, itemData) {
   
   const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
   
+  const allTransactions = db.prepare('SELECT * FROM market_transactions').all();
   let transactions;
   
   if (itemType === 'material') {
-    transactions = db.prepare(`
-      SELECT price FROM market_transactions
-      WHERE item_type = 'material' 
-      AND JSON_EXTRACT(item_data, '$.material_id') = ?
-      AND timestamp > ?
-      ORDER BY timestamp DESC
-      LIMIT 20
-    `).all(itemData.material_id, sevenDaysAgo);
+    transactions = allTransactions.filter(t => {
+      if (t.item_type !== 'material' || t.timestamp <= sevenDaysAgo) return false;
+      try {
+        const data = JSON.parse(t.item_data || '{}');
+        return data.material_id === itemData.material_id;
+      } catch { return false; }
+    });
   } else if (itemType === 'detector') {
-    transactions = db.prepare(`
-      SELECT price FROM market_transactions
-      WHERE item_type = 'detector'
-      AND JSON_EXTRACT(item_data, '$.tier') = ?
-      AND JSON_EXTRACT(item_data, '$.rarity') = ?
-      AND timestamp > ?
-      ORDER BY timestamp DESC
-      LIMIT 20
-    `).all(itemData.tier, itemData.rarity, sevenDaysAgo);
+    const tier = itemData.tier || 1;
+    const rarity = itemData.rarity || 'common';
+    transactions = allTransactions.filter(t => {
+      if (t.item_type !== 'detector' || t.timestamp <= sevenDaysAgo) return false;
+      try {
+        const data = JSON.parse(t.item_data || '{}');
+        return data.tier === tier && data.rarity === rarity;
+      } catch { return false; }
+    });
   }
   
   if (!transactions || transactions.length === 0) {
@@ -86,27 +86,27 @@ function getPriceTrend(itemType, itemId, days = 7, itemData = {}) {
   const db = getDb();
   const startTime = Date.now() - days * 24 * 60 * 60 * 1000;
   
+  const allTransactions = db.prepare('SELECT * FROM market_transactions').all();
   let transactions;
   
   if (itemType === 'material') {
-    transactions = db.prepare(`
-      SELECT price, timestamp FROM market_transactions
-      WHERE item_type = 'material'
-      AND JSON_EXTRACT(item_data, '$.material_id') = ?
-      AND timestamp > ?
-      ORDER BY timestamp ASC
-    `).all(itemId, startTime);
+    transactions = allTransactions.filter(t => {
+      if (t.item_type !== 'material' || t.timestamp <= startTime) return false;
+      try {
+        const data = JSON.parse(t.item_data || '{}');
+        return data.material_id === itemId;
+      } catch { return false; }
+    });
   } else if (itemType === 'detector') {
     const tier = itemData.tier || 1;
     const rarity = itemData.rarity || 'common';
-    transactions = db.prepare(`
-      SELECT price, timestamp FROM market_transactions
-      WHERE item_type = 'detector'
-      AND JSON_EXTRACT(item_data, '$.tier') = ?
-      AND JSON_EXTRACT(item_data, '$.rarity') = ?
-      AND timestamp > ?
-      ORDER BY timestamp ASC
-    `).all(tier, rarity, startTime);
+    transactions = allTransactions.filter(t => {
+      if (t.item_type !== 'detector' || t.timestamp <= startTime) return false;
+      try {
+        const data = JSON.parse(t.item_data || '{}');
+        return data.tier === tier && data.rarity === rarity;
+      } catch { return false; }
+    });
   } else {
     transactions = [];
   }

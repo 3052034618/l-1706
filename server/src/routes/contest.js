@@ -26,13 +26,22 @@ router.get('/current', authMiddleware, (req, res) => {
     WHERE contest_id = ? AND player_id = ?
   `).get(contest.id, req.userId);
   
+  let activeBuffs = [];
+  if (userEntry && userEntry.active_buffs) {
+    try {
+      const allBuffs = JSON.parse(typeof userEntry.active_buffs === 'string' ? userEntry.active_buffs : '[]');
+      activeBuffs = allBuffs.filter(b => b.endTime > Date.now());
+    } catch (e) {}
+  }
+  
   const standings = gameEngine ? gameEngine.getContestStandings(contest.id) : [];
   
   res.json({
     contest,
     userEntry: userEntry ? {
       ...userEntry,
-      soundWaveData: JSON.parse(userEntry.sound_wave_data || '{}')
+      soundWaveData: JSON.parse(userEntry.sound_wave_data || '{}'),
+      activeBuffs
     } : null,
     standings: standings.slice(0, 50),
     participantCount: contest.participant_count

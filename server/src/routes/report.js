@@ -149,9 +149,12 @@ function calculatePriceTrends(weekTransactions, db) {
       if (itemType === 'material' && itemData.material_id) {
         itemKey = `mat_${itemData.material_id}`;
         itemName = materialMap[itemData.material_id]?.name || itemData.material_id;
-      } else if (itemType === 'detector' && itemData.id) {
-        itemKey = `det_${itemData.id}`;
-        itemName = itemData.name || `${itemData.rarity || '普通'}探测器`;
+      } else if (itemType === 'detector') {
+        const tier = itemData.tier || 1;
+        const rarity = itemData.rarity || 'common';
+        itemKey = `det_t${tier}_${rarity}`;
+        const rarityNames = { common: '普通', uncommon: '优秀', rare: '稀有', epic: '史诗', legendary: '传说' };
+        itemName = `T${tier}${rarityNames[rarity] || '普通'}探测器`;
       }
       
       if (!itemKey) return;
@@ -196,8 +199,10 @@ function calculateDailyPriceData(weekTransactions, weekStart, db) {
       
       if (t.item_type === 'material' && itemData.material_id) {
         itemKey = `mat_${itemData.material_id}`;
-      } else if (t.item_type === 'detector' && itemData.id) {
-        itemKey = `det_${itemData.id}`;
+      } else if (t.item_type === 'detector') {
+        const tier = itemData.tier || 1;
+        const rarity = itemData.rarity || 'common';
+        itemKey = `det_t${tier}_${rarity}`;
       }
       
       if (itemKey) {
@@ -230,7 +235,9 @@ function calculateDailyPriceData(weekTransactions, weekStart, db) {
           if (itemKey.startsWith('mat_') && t.item_type === 'material') {
             return `mat_${itemData.material_id}` === itemKey;
           } else if (itemKey.startsWith('det_') && t.item_type === 'detector') {
-            return `det_${itemData.id}` === itemKey;
+            const tier = itemData.tier || 1;
+            const rarity = itemData.rarity || 'common';
+            return `det_t${tier}_${rarity}` === itemKey;
           }
           return false;
         } catch (e) { return false; }
@@ -249,13 +256,10 @@ function calculateDailyPriceData(weekTransactions, weekStart, db) {
       const matId = itemKey.substring(4);
       return materialMap[matId]?.name || matId;
     } else if (itemKey.startsWith('det_')) {
-      for (const t of weekTransactions) {
-        try {
-          const itemData = JSON.parse(t.item_data || '{}');
-          if (`det_${itemData.id}` === itemKey) {
-            return itemData.name || '探测器';
-          }
-        } catch (e) {}
+      const match = itemKey.match(/^det_t(\d+)_(.+)$/);
+      if (match) {
+        const rarityNames = { common: '普通', uncommon: '优秀', rare: '稀有', epic: '史诗', legendary: '传说' };
+        return `T${match[1]}${rarityNames[match[2]] || '普通'}探测器`;
       }
       return '探测器';
     }
@@ -406,6 +410,8 @@ router.get('/export/pdf', authMiddleware, (req, res) => {
   const radarData = calculateRadarData(weekDetectors);
   const contestScoreHistory = calculateContestScoreHistory(allContests, allContestEntries, weekStart);
   const dailyPriceData = calculateDailyPriceData(weekTransactions, weekStart, db);
+  const priceTrends = calculatePriceTrends(weekTransactions, db);
+  const topMaterials = calculateMaterialsUsed(allCrafting, weekStart, db);
   
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename=industry-report-week${weekNumber}.pdf`);
@@ -555,7 +561,15 @@ router.get('/export/pdf', authMiddleware, (req, res) => {
   doc.fontSize(18).text('💹 价格走势');
   doc.moveDown();
   
-  if (dailyPriceData.datasets.length > 0) {
+  if (priceTrends && priceTrends.length > 0) {
+    priceTrends.forEach((trend) => {
+      doc.fontSize(11).fillColor('#333');
+      doc.text(`• ${trend.name} (类型: ${trend.itemType === 'detector' ? '探测器' : '材料'})`);
+      doc.fontSize(10).fillColor('#666');
+      doc.text(`   成交量: ${trend.volume}笔 | 均价: ${trend.avg_price} 金币 | 总额: ${trend.total_price} 金币`);
+      doc.moveDown(0.3);
+    });
+  } else if (dailyPriceData.datasets.length > 0) {
     dailyPriceData.datasets.forEach((dataset) => {
       const avg = dataset.data.reduce((a, b) => a + b, 0) / 7;
       doc.fontSize(11).fillColor(dataset.color);
