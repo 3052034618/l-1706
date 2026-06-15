@@ -67,26 +67,27 @@ function calculateAudienceResonance(detector, currentScore, contestDuration) {
 function generateSoundWaveData(detector, timeElapsed) {
   const baseIntensity = detector.range * 0.5 + detector.precision * 0.3;
   
-  const waveVariation = Math.sin(timeElapsed * 0.1) * 0.2 + 1;
+  const waveVariation = Math.sin(timeElapsed * 0.1) * 0.1 + 1;
   
-  const decayFactor = Math.max(0.5, 1 - (timeElapsed / 120) * 0.3);
+  const decayFactor = Math.max(0.6, 1 - (timeElapsed / 180) * 0.25);
   
   let decayMultiplier = decayFactor;
   if (detector.affixes?.includes('time_warp')) {
     decayMultiplier = 1 - (1 - decayFactor) * 0.5;
   }
   
-  const noise = (Math.random() - 0.5) * 0.1;
+  const noise = 0;
   
   const currentIntensity = baseIntensity * waveVariation * decayMultiplier * (1 + noise);
   
-  const frequency = 50 + detector.precision * 0.5 + Math.sin(timeElapsed * 0.05) * 10;
+  const frequency = 50 + detector.precision * 0.5 + Math.sin(timeElapsed * 0.05) * 5;
   
   const rarityLevel = RARITY_WEIGHTS[detector.rarity] || 1;
-  const rarityValue = rarityLevel * 20 + Math.random() * 10;
+  const rarityValue = rarityLevel * 20 + 5;
   
   return {
     intensity: Math.floor(currentIntensity),
+    baseIntensity: Math.floor(baseIntensity),
     frequency: Math.floor(frequency),
     rarityValue: Math.floor(rarityValue),
     wavePattern: generateWavePattern(timeElapsed, detector)

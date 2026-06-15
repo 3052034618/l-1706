@@ -31,6 +31,7 @@ router.get('/materials', authMiddleware, (req, res) => {
     WHERE pm.player_id = ?
   `).all(req.userId);
   
+  console.log('[DBG-MATERIALS] userId=', req.userId, 'materials=', JSON.stringify(materials));
   res.json({ materials });
 });
 

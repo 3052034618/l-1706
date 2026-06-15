@@ -96,13 +96,14 @@ const contestSlice = createSlice({
       .addCase(applyContestSkill.fulfilled, (state, action: any) => {
         if (action.payload?.success) {
           const skillType = action.meta.arg.skillType;
-          const cooldownEnd = Date.now() + (action.payload.cooldown || 30) * 1000;
+          const cooldownEnd = action.payload.cooldownEndTime || (Date.now() + (action.payload.cooldown || 30) * 1000);
           state.skillCooldowns[skillType] = cooldownEnd;
           
           if (skillType === 'focus_boost') {
+            const buffEnd = action.payload.buffEndTime || (Date.now() + (action.payload.duration || 10) * 1000);
             state.activeBuffs.push({
               type: 'focus_boost',
-              endTime: Date.now() + (action.payload.duration || 10) * 1000
+              endTime: buffEnd
             });
           }
         }

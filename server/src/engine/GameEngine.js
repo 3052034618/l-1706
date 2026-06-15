@@ -13,6 +13,7 @@ class GameEngine {
     this.craftingTasks = new Map();
     this.contestUpdateTimers = new Map();
     this.entryBuffs = new Map();
+    this.skillCooldowns = new Map();
   }
 
   async init() {
@@ -88,6 +89,11 @@ class GameEngine {
           SET quantity = quantity - ?
           WHERE player_id = ? AND material_id = ?
         `).run(req.quantity, playerId, req.material_id);
+        
+        this.db.prepare(`
+          DELETE FROM player_materials 
+          WHERE player_id = ? AND material_id = ? AND quantity <= 0
+        `).run(playerId, req.material_id);
       });
 
       const materialsData = JSON.stringify(materialsWithInfo);
@@ -327,11 +333,11 @@ class GameEngine {
       throw new Error('技能不存在');
     }
     
-    const lastUsed = this.getSkillCooldown(entry.id, skillType);
+    const cooldownEndTime = this.getSkillCooldown(entry.id, skillType);
     const now = Date.now();
     
-    if (now - lastUsed < skill.cooldown * 1000) {
-      const remaining = Math.ceil((skill.cooldown * 1000 - (now - lastUsed)) / 1000);
+    if (now < cooldownEndTime) {
+      const remaining = Math.ceil((cooldownEndTime - now) / 1000);
       throw new Error(`技能冷却中，剩余 ${remaining} 秒`);
     }
     
@@ -385,21 +391,22 @@ class GameEngine {
       skill: skillType,
       duration: skill.duration,
       cooldown: skill.cooldown,
+      cooldownEndTime: this.getSkillCooldown(entry.id, skillType),
+      buffEndTime: skillType === 'focus_boost' ? (now + skill.duration * 1000) : null,
       targetAffected: !!targetEntry
     };
   }
 
   getSkillCooldown(entryId, skillType) {
     const key = `cooldown_${entryId}_${skillType}`;
-    return this.skillCooldowns?.get?.(key) || 0;
+    return this.skillCooldowns.get(key) || 0;
   }
 
   setSkillCooldown(entryId, skillType, timestamp) {
-    if (!this.skillCooldowns) {
-      this.skillCooldowns = new Map();
-    }
+    const skill = contestEngine.SKILL_EFFECTS[skillType];
+    const cooldownMs = skill ? skill.cooldown * 1000 : 30000;
     const key = `cooldown_${entryId}_${skillType}`;
-    this.skillCooldowns.set(key, timestamp);
+    this.skillCooldowns.set(key, timestamp + cooldownMs);
   }
 
   getMatchedOpponents(playerId, contestId = null) {
@@ -526,9 +533,9 @@ class GameEngine {
       const transactionId = uuid();
       this.db.prepare(`
         INSERT INTO market_transactions 
-        (id, listing_id, seller_id, buyer_id, item_type, price, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(transactionId, listingId, listing.seller_id, buyerId, listing.item_type, listing.price, Date.now());
+        (id, listing_id, seller_id, buyer_id, item_type, item_data, price, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(transactionId, listingId, listing.seller_id, buyerId, listing.item_type, listing.item_data, listing.price, Date.now());
 
       if (listing.item_type === 'detector') {
         this.db.prepare(`

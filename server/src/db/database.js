@@ -197,21 +197,23 @@ function _parseWhereConditions(whereStr) {
   parts.forEach(part => {
     const trimmed = part.trim();
     
-    const inMatch = trimmed.match(/(\w+)\s+IN\s*\(([^)]+)\)/i);
+    const inMatch = trimmed.match(/([\w.]+)\s+IN\s*\(([^)]+)\)/i);
     if (inMatch) {
+      const field = inMatch[1].includes('.') ? inMatch[1].split('.').pop() : inMatch[1];
       conditions.push({
         type: 'in',
-        field: inMatch[1],
+        field,
         values: inMatch[2].split(',').map(v => v.trim())
       });
       return;
     }
     
-    const match = trimmed.match(/(\w+)\s*(=|!=|>=|<=|>|<)\s*(.+)/i);
+    const match = trimmed.match(/([\w.]+)\s*(=|!=|>=|<=|>|<)\s*(.+)/i);
     if (match) {
+      const field = match[1].includes('.') ? match[1].split('.').pop() : match[1];
       conditions.push({
         type: 'compare',
-        field: match[1],
+        field,
         op: match[2],
         value: match[3].trim()
       });
@@ -221,47 +223,88 @@ function _parseWhereConditions(whereStr) {
   return conditions;
 }
 
+function _applyJoins(sql, rows) {
+  const joinRegex = /JOIN\s+(\w+)(?:\s+(\w+))?\s+ON\s+([\w.]+)\s*=\s*([\w.]+)/gi;
+  let match;
+  let result = [...rows];
+  
+  while ((match = joinRegex.exec(sql)) !== null) {
+    const joinTableName = match[1];
+    const joinTableAlias = match[2] || joinTableName;
+    const leftFieldRaw = match[3];
+    const rightFieldRaw = match[4];
+    
+    const leftField = leftFieldRaw.includes('.') ? leftFieldRaw.split('.').pop() : leftFieldRaw;
+    const rightField = rightFieldRaw.includes('.') ? rightFieldRaw.split('.').pop() : rightFieldRaw;
+    
+    if (!db[joinTableName]) continue;
+    
+    const joinRows = db[joinTableName];
+    
+    result = result.map(row => {
+      const matched = joinRows.find(jr => jr[rightField] === row[leftField]);
+      if (matched) {
+        return { ...row, ...matched };
+      }
+      return row;
+    });
+  }
+  
+  return result;
+}
+
 function _applyConditions(rows, conditions, params) {
   let paramIdx = 0;
   
+  const resolvedConditions = conditions.map(cond => {
+    if (cond.type === 'in') {
+      const resolvedValues = cond.values.map(v => {
+        if (v === '?') {
+          return params[paramIdx++];
+        }
+        if (v.startsWith("'") && v.endsWith("'")) {
+          return v.slice(1, -1);
+        }
+        if (!isNaN(parseFloat(v))) {
+          return parseFloat(v);
+        }
+        return v;
+      });
+      return { ...cond, resolvedValues };
+    }
+    
+    if (cond.type === 'compare') {
+      let resolvedValue;
+      if (cond.value === '?') {
+        resolvedValue = params[paramIdx++];
+      } else if (cond.value.startsWith("'") && cond.value.endsWith("'")) {
+        resolvedValue = cond.value.slice(1, -1);
+      } else if (!isNaN(parseFloat(cond.value))) {
+        resolvedValue = parseFloat(cond.value);
+      } else {
+        resolvedValue = cond.value;
+      }
+      return { ...cond, resolvedValue };
+    }
+    
+    return cond;
+  });
+  
   const result = rows.filter(row => {
-    return conditions.every(cond => {
+    return resolvedConditions.every(cond => {
       if (cond.type === 'in') {
-        const values = cond.values.map(v => {
-          if (v === '?') {
-            return params[paramIdx++];
-          }
-          if (v.startsWith("'") && v.endsWith("'")) {
-            return v.slice(1, -1);
-          }
-          if (!isNaN(parseFloat(v))) {
-            return parseFloat(v);
-          }
-          return v;
-        });
-        return values.includes(row[cond.field]);
+        return cond.resolvedValues.includes(row[cond.field]);
       }
       
       if (cond.type === 'compare') {
-        let val;
-        if (cond.value === '?') {
-          val = params[paramIdx++];
-        } else if (cond.value.startsWith("'") && cond.value.endsWith("'")) {
-          val = cond.value.slice(1, -1);
-        } else if (!isNaN(parseFloat(cond.value))) {
-          val = parseFloat(cond.value);
-        } else {
-          val = cond.value;
-        }
-        
         switch (cond.op) {
-          case '=': return row[cond.field] === val;
-          case '!=': return row[cond.field] !== val;
-          case '>': return row[cond.field] > val;
-          case '>=': return row[cond.field] >= val;
-          case '<': return row[cond.field] < val;
-          case '<=': return row[cond.field] <= val;
-          default: return row[cond.field] === val;
+          case '=': return row[cond.field] === cond.resolvedValue;
+          case '!=': return row[cond.field] !== cond.resolvedValue;
+          case '>': return row[cond.field] > cond.resolvedValue;
+          case '>=': return row[cond.field] >= cond.resolvedValue;
+          case '<': return row[cond.field] < cond.resolvedValue;
+          case '<=': return row[cond.field] <= cond.resolvedValue;
+          default: return row[cond.field] === cond.resolvedValue;
         }
       }
       
@@ -317,8 +360,8 @@ function prepare(sql) {
       }
       
       if (sql.trim().toUpperCase().startsWith('UPDATE')) {
-        const setMatch = sql.match(/SET\s+(.+?)\s+WHERE/i);
-        const whereMatch = sql.match(/WHERE\s+(.+?)$/i);
+        const setMatch = sql.match(/SET\s+([\s\S]+?)\s+WHERE/i);
+        const whereMatch = sql.match(/WHERE\s+([\s\S]+?)$/i);
         
         if (tableName && db[tableName]) {
           const rows = db[tableName];
@@ -327,8 +370,18 @@ function prepare(sql) {
           let setFields = [];
           if (setMatch) {
             setFields = setMatch[1].split(',').map(s => {
-              const [field, val] = s.trim().split('=').map(p => p.trim());
-              return { field, isParam: val === '?', value: val };
+              const parts = s.trim().split('=');
+              const field = parts[0].trim();
+              const expr = parts.slice(1).join('=').trim();
+              
+              const hasPlaceholder = expr.includes('?');
+              
+              return { 
+                field, 
+                isParam: hasPlaceholder, 
+                expression: hasPlaceholder ? expr : null,
+                value: hasPlaceholder ? null : expr
+              };
             });
           }
           const setParamCount = setFields.filter(f => f.isParam).length;
@@ -363,15 +416,22 @@ function prepare(sql) {
                     value = cond.value;
                   }
                 }
-                switch (cond.op) {
-                  case '=': return row[cond.field] === value;
-                  case '!=': return row[cond.field] !== value;
-                  case '>': return row[cond.field] > value;
-                  case '>=': return row[cond.field] >= value;
-                  case '<': return row[cond.field] < value;
-                  case '<=': return row[cond.field] <= value;
-                  default: return row[cond.field] === value;
+                const rowValue = row[cond.field];
+                const opResult = (() => {
+                  switch (cond.op) {
+                    case '=': return rowValue === value;
+                    case '!=': return rowValue !== value;
+                    case '>': return rowValue > value;
+                    case '>=': return rowValue >= value;
+                    case '<': return rowValue < value;
+                    case '<=': return rowValue <= value;
+                    default: return rowValue === value;
+                  }
+                })();
+                if (tableName === 'player_materials') {
+                  console.log(`[DBG-WHERE] cond: field=${cond.field}, op=${cond.op}, condValue=${JSON.stringify(value)}, rowValue=${JSON.stringify(rowValue)}, isParam=${cond.isParam}, paramIdx=${cond.paramIdx}, result=${opResult}`);
                 }
+                return opResult;
               });
             }
             
@@ -379,11 +439,50 @@ function prepare(sql) {
               let paramIdx = 0;
               setFields.forEach(setField => {
                 if (setField.isParam) {
-                  row[setField.field] = params[paramIdx++];
+                  const expr = setField.expression;
+                  const paramValue = params[paramIdx++];
+                  
+                  console.log(`[DBG-UPDATE] table=${tableName}, field=${setField.field}, expr=${expr}, paramValue=${paramValue}, paramIdx=${paramIdx-1}, allParams=`, JSON.stringify(params));
+                  
+                  if (expr === '?') {
+                    row[setField.field] = paramValue;
+                  } else {
+                    const placeholderIdx = expr.indexOf('?');
+                    const beforePlaceholder = expr.substring(0, placeholderIdx).trim();
+                    const afterPlaceholder = expr.substring(placeholderIdx + 1).trim();
+                    
+                    let fieldName = null;
+                    let operator = null;
+                    let constValue = null;
+                    
+                    const addMatch = beforePlaceholder.match(/^(\w+)\s*\+$/);
+                    const subMatch = beforePlaceholder.match(/^(\w+)\s*-$/);
+                    const mulMatch = beforePlaceholder.match(/^(\w+)\s*\*$/);
+                    const divMatch = beforePlaceholder.match(/^(\w+)\s*\/$/);
+                    
+                    if (addMatch) { fieldName = addMatch[1]; operator = '+'; }
+                    else if (subMatch) { fieldName = subMatch[1]; operator = '-'; }
+                    else if (mulMatch) { fieldName = mulMatch[1]; operator = '*'; }
+                    else if (divMatch) { fieldName = divMatch[1]; operator = '/'; }
+                    
+                    if (fieldName && operator) {
+                      const currentValue = row[fieldName] || 0;
+                      switch (operator) {
+                        case '+': row[setField.field] = currentValue + paramValue; break;
+                        case '-': row[setField.field] = currentValue - paramValue; break;
+                        case '*': row[setField.field] = currentValue * paramValue; break;
+                        case '/': row[setField.field] = paramValue !== 0 ? currentValue / paramValue : 0; break;
+                      }
+                      console.log(`[DBG-UPDATE-RESULT] op=${operator}, currentValue=${currentValue}, newValue=${row[setField.field]}`);
+                    } else {
+                      row[setField.field] = paramValue;
+                    }
+                  }
                 } else if (!isNaN(parseFloat(setField.value)) && setField.value !== '') {
                   row[setField.field] = parseFloat(setField.value);
                 } else {
-                  row[setField.field] = setField.value;
+                  const cleanValue = setField.value.replace(/^['"]|['"]$/g, '');
+                  row[setField.field] = cleanValue;
                 }
               });
               updated++;
@@ -395,11 +494,57 @@ function prepare(sql) {
         }
       }
       
+      if (sql.trim().toUpperCase().startsWith('DELETE')) {
+        const tableMatch = sql.match(/FROM\s+(\w+)/i);
+        const tableName = tableMatch ? tableMatch[1] : null;
+        const whereMatch = sql.match(/WHERE\s+([\s\S]+?)$/i);
+        
+        if (tableName && db[tableName]) {
+          let whereConditions = [];
+          if (whereMatch) {
+            const conditions = _parseWhereConditions(whereMatch[1]);
+            const applied = _applyConditions([], conditions, params);
+            whereConditions = conditions.map(c => {
+              if (c.type === 'compare' && c.value === '?') {
+                return { ...c, value: params[applied.paramIdx++] };
+              }
+              return c;
+            });
+          }
+          
+          const before = db[tableName].length;
+          db[tableName] = db[tableName].filter(row => {
+            if (whereConditions.length === 0) return false;
+            return !whereConditions.every(cond => {
+              if (cond.type === 'in') {
+                return cond.values.includes(String(row[cond.field]));
+              }
+              const rowVal = row[cond.field];
+              const condVal = !isNaN(parseFloat(cond.value)) && String(parseFloat(cond.value)) === String(cond.value) 
+                ? parseFloat(cond.value) 
+                : String(cond.value).replace(/^['"]|['"]$/g, '');
+              switch (cond.op) {
+                case '=': return rowVal === condVal;
+                case '!=': return rowVal !== condVal;
+                case '>': return rowVal > condVal;
+                case '>=': return rowVal >= condVal;
+                case '<': return rowVal < condVal;
+                case '<=': return rowVal <= condVal;
+                default: return rowVal === condVal;
+              }
+            });
+          });
+          saveDatabase();
+          return { changes: before - db[tableName].length };
+        }
+        return { changes: 0 };
+      }
+      
       return { changes: 0 };
     },
     
     get(...params) {
-      const selectMatch = sql.match(/SELECT\s+(.+?)\s+FROM/i);
+      const selectMatch = sql.match(/SELECT\s+([\s\S]+?)\s+FROM/i);
       const tableMatch = sql.match(/FROM\s+(\w+)/i);
       const tableName = tableMatch ? tableMatch[1] : null;
       
@@ -408,8 +553,9 @@ function prepare(sql) {
         const isCount = selectMatch && /COUNT\(\s*\*\s*\)/i.test(selectMatch[1]);
         
         let result = [...rows];
+        result = _applyJoins(sql, result);
         
-        const whereMatch = sql.match(/WHERE\s+(.+?)(?:ORDER|LIMIT|$)/i);
+        const whereMatch = sql.match(/WHERE\s+([\s\S]+?)(?:ORDER|LIMIT|$)/i);
         if (whereMatch) {
           const conditions = _parseWhereConditions(whereMatch[1]);
           const filtered = _applyConditions(result, conditions, params);
@@ -451,11 +597,16 @@ function prepare(sql) {
       
       if (tableName && db[tableName]) {
         let result = [...db[tableName]];
+        console.log('[DBG-ALL] initial rows:', result.length);
+        result = _applyJoins(sql, result);
+        console.log('[DBG-ALL] after JOIN rows:', result.length, 'firstRow materials:', result[0] ? JSON.stringify(result[0].material_id) : null);
         
-        const whereMatch = sql.match(/WHERE\s+(.+?)(?:ORDER BY|LIMIT|$)/i);
+        const whereMatch = sql.match(/WHERE\s+([\s\S]+?)(?:ORDER BY|LIMIT|$)/i);
         if (whereMatch) {
           const conditions = _parseWhereConditions(whereMatch[1]);
+          console.log('[DBG-ALL] where conditions:', JSON.stringify(conditions), 'params:', params);
           const filtered = _applyConditions(result, conditions, params);
+          console.log('[DBG-ALL] after WHERE rows:', filtered.result.length, 'filtered.paramIdx:', filtered.paramIdx);
           result = filtered.result;
         }
         

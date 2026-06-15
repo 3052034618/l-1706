@@ -19,91 +19,80 @@ router.get('/current', authMiddleware, (req, res) => {
   const weekStart = getWeekStart(weekNumber, now.getFullYear());
   const weekEnd = weekStart + 7 * 24 * 60 * 60 * 1000;
   
-  const craftingCount = db.prepare(`
-    SELECT COUNT(*) as count FROM crafting_tasks
-    WHERE start_time >= ? AND status = 'completed'
-  `).get(weekStart).count;
+  const allCrafting = db.prepare('SELECT * FROM crafting_tasks').all();
+  const weekCrafting = allCrafting.filter(t => t.start_time >= weekStart && t.status === 'completed');
   
-  const detectorRarity = db.prepare(`
-    SELECT rarity, COUNT(*) as count
-    FROM detectors
-    WHERE created_at >= ?
-    GROUP BY rarity
-  `).all(weekStart);
+  const allDetectors = db.prepare('SELECT * FROM detectors').all();
+  const weekDetectors = allDetectors.filter(d => d.created_at >= weekStart);
   
-  const materialsUsed = db.prepare(`
-    SELECT m.id, m.name, m.type, m.rarity, COUNT(*) as times_used
-    FROM crafting_tasks ct,
-         json_each(ct.materials) as mat_json,
-         materials m
-    WHERE ct.start_time >= ?
-      AND json_extract(mat_json.value, '$.material_id') = m.id
-    GROUP BY m.id
-    ORDER BY times_used DESC
-    LIMIT 10
-  `).all(weekStart);
+  const rarityMap = {};
+  weekDetectors.forEach(d => {
+    rarityMap[d.rarity] = (rarityMap[d.rarity] || 0) + 1;
+  });
+  const detectorRarity = Object.entries(rarityMap).map(([rarity, count]) => ({ rarity, count }));
   
-  const contestStats = db.prepare(`
-    SELECT COUNT(*) as total_entries, AVG(score) as avg_score
-    FROM contest_entries ce
-    JOIN contests c ON ce.contest_id = c.id
-    WHERE c.date >= ?
-  `).get(weekStart.toISOString().split('T')[0]);
+  const materialsUsed = calculateMaterialsUsed(allCrafting, weekStart, db);
   
-  const marketStats = db.prepare(`
-    SELECT COUNT(*) as total_transactions,
-           SUM(price) as total_volume,
-           AVG(price) as avg_price
-    FROM market_transactions
-    WHERE timestamp >= ?
-  `).get(weekStart);
+  const allContestEntries = db.prepare('SELECT * FROM contest_entries').all();
+  const allContests = db.prepare('SELECT * FROM contests').all();
+  const weekContests = allContests.filter(c => {
+    const contestDate = new Date(c.date).getTime();
+    return contestDate >= weekStart;
+  });
+  const weekContestIds = new Set(weekContests.map(c => c.id));
+  const weekEntries = allContestEntries.filter(e => weekContestIds.has(e.contest_id));
   
-  const topDetectors = db.prepare(`
-    SELECT d.*, p.nickname
-    FROM detectors d
-    JOIN players p ON d.player_id = p.id
-    WHERE d.created_at >= ?
-    ORDER BY d.quality DESC
-    LIMIT 5
-  `).all(weekStart);
+  const contestStats = {
+    total_entries: weekEntries.length,
+    avg_score: weekEntries.length > 0 
+      ? weekEntries.reduce((sum, e) => sum + (e.score || 0), 0) / weekEntries.length 
+      : 0
+  };
   
-  const priceTrends = db.prepare(`
-    SELECT m.id, m.name,
-           AVG(mt.price) as avg_price,
-           COUNT(*) as volume
-    FROM market_transactions mt
-    JOIN materials m ON json_extract(mt.item_data, '$.material_id') = m.id
-    WHERE mt.timestamp >= ?
-    GROUP BY m.id
-    ORDER BY volume DESC
-    LIMIT 8
-  `).all(weekStart);
+  const allTransactions = db.prepare('SELECT * FROM market_transactions').all();
+  const weekTransactions = allTransactions.filter(t => t.timestamp >= weekStart);
   
-  const dailyPriceData = getDailyPriceData(db, weekStart);
+  const marketStats = {
+    total_transactions: weekTransactions.length,
+    total_volume: weekTransactions.reduce((sum, t) => sum + (t.price || 0), 0),
+    avg_price: weekTransactions.length > 0
+      ? weekTransactions.reduce((sum, t) => sum + (t.price || 0), 0) / weekTransactions.length
+      : 0
+  };
   
-  const radarData = calculateRadarData(db, weekStart);
+  const allPlayers = db.prepare('SELECT * FROM players').all();
+  const playerMap = Object.fromEntries(allPlayers.map(p => [p.id, p]));
   
-  const contestScoreHistory = getContestScoreHistory(db, weekStart);
+  const topDetectors = [...weekDetectors]
+    .sort((a, b) => (b.quality || 0) - (a.quality || 0))
+    .slice(0, 5)
+    .map(d => ({
+      ...d,
+      nickname: playerMap[d.player_id]?.nickname || '未知',
+      affixes: JSON.parse(d.affixes || '[]')
+    }));
+  
+  const priceTrends = calculatePriceTrends(weekTransactions, db);
+  const dailyPriceData = calculateDailyPriceData(weekTransactions, weekStart, db);
+  const radarData = calculateRadarData(weekDetectors);
+  const contestScoreHistory = calculateContestScoreHistory(allContests, allContestEntries, weekStart);
   
   const report = {
     weekNumber,
     year: now.getFullYear(),
     period: { start: weekStart, end: weekEnd },
     summary: {
-      totalCrafting: craftingCount,
-      totalDetectors: detectorRarity.reduce((sum, d) => sum + d.count, 0),
+      totalCrafting: weekCrafting.length,
+      totalDetectors: weekDetectors.length,
       detectorByRarity: detectorRarity,
-      totalContestEntries: contestStats.total_entries || 0,
-      avgContestScore: Math.floor(contestStats.avg_score || 0),
-      totalTransactions: marketStats.total_transactions || 0,
-      totalVolume: marketStats.total_volume || 0,
-      avgTransactionPrice: Math.floor(marketStats.avg_price || 0)
+      totalContestEntries: contestStats.total_entries,
+      avgContestScore: Math.floor(contestStats.avg_score),
+      totalTransactions: marketStats.total_transactions,
+      totalVolume: marketStats.total_volume,
+      avgTransactionPrice: Math.floor(marketStats.avg_price)
     },
     topMaterials: materialsUsed,
-    topDetectors: topDetectors.map(d => ({
-      ...d,
-      affixes: JSON.parse(d.affixes || '[]')
-    })),
+    topDetectors,
     priceTrends,
     dailyPriceData,
     radarData,
@@ -113,75 +102,164 @@ router.get('/current', authMiddleware, (req, res) => {
   res.json(report);
 });
 
-function getDailyPriceData(db, weekStart) {
+function calculateMaterialsUsed(allCrafting, weekStart, db) {
+  const allMaterials = db.prepare('SELECT * FROM materials').all();
+  const materialMap = Object.fromEntries(allMaterials.map(m => [m.id, m]));
+  
+  const usageMap = {};
+  
+  allCrafting.forEach(task => {
+    if (task.start_time < weekStart) return;
+    try {
+      const materials = JSON.parse(task.materials || '[]');
+      materials.forEach(m => {
+        const id = m.material_id || m.id;
+        if (!usageMap[id]) {
+          usageMap[id] = {
+            id,
+            name: materialMap[id]?.name || id,
+            type: materialMap[id]?.type || 'common',
+            rarity: materialMap[id]?.rarity || 'common',
+            times_used: 0
+          };
+        }
+        usageMap[id].times_used += 1;
+      });
+    } catch (e) {}
+  });
+  
+  return Object.values(usageMap)
+    .sort((a, b) => b.times_used - a.times_used)
+    .slice(0, 10);
+}
+
+function calculatePriceTrends(weekTransactions, db) {
+  const allMaterials = db.prepare('SELECT * FROM materials').all();
+  const materialMap = Object.fromEntries(allMaterials.map(m => [m.id, m]));
+  
+  const priceMap = {};
+  
+  weekTransactions.forEach(t => {
+    try {
+      const itemData = JSON.parse(t.item_data || '{}');
+      const materialId = itemData.material_id;
+      if (!materialId) return;
+      
+      if (!priceMap[materialId]) {
+        priceMap[materialId] = {
+          id: materialId,
+          name: materialMap[materialId]?.name || materialId,
+          total_price: 0,
+          volume: 0
+        };
+      }
+      priceMap[materialId].total_price += (t.price || 0);
+      priceMap[materialId].volume += 1;
+    } catch (e) {}
+  });
+  
+  return Object.values(priceMap)
+    .map(p => ({
+      ...p,
+      avg_price: p.volume > 0 ? Math.floor(p.total_price / p.volume) : 0
+    }))
+    .sort((a, b) => b.volume - a.volume)
+    .slice(0, 8);
+}
+
+function calculateDailyPriceData(weekTransactions, weekStart, db) {
+  const allMaterials = db.prepare('SELECT * FROM materials').all();
+  const materialMap = Object.fromEntries(allMaterials.map(m => [m.id, m]));
+  
   const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-  const dailyData = {};
+  const dailyMaterialTotals = {};
+  const dailyMaterialCounts = {};
+  const topMaterialIds = new Set();
+  
+  const totalsByMaterial = {};
+  weekTransactions.forEach(t => {
+    try {
+      const itemData = JSON.parse(t.item_data || '{}');
+      if (itemData.material_id) {
+        totalsByMaterial[itemData.material_id] = (totalsByMaterial[itemData.material_id] || 0) + 1;
+      }
+    } catch (e) {}
+  });
+  
+  const topMaterials = Object.entries(totalsByMaterial)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([id]) => id);
+  topMaterials.forEach(id => topMaterialIds.add(id));
   
   for (let i = 0; i < 7; i++) {
     const dayStart = weekStart + i * 24 * 60 * 60 * 1000;
     const dayEnd = dayStart + 24 * 60 * 60 * 1000;
     
-    const topMaterials = db.prepare(`
-      SELECT m.id, m.name
-      FROM market_transactions mt
-      JOIN materials m ON json_extract(mt.item_data, '$.material_id') = m.id
-      WHERE mt.timestamp >= ?
-      GROUP BY m.id
-      ORDER BY COUNT(*) DESC
-      LIMIT 5
-    `).all(weekStart);
+    const dayTransactions = weekTransactions.filter(t => 
+      t.timestamp >= dayStart && t.timestamp < dayEnd
+    );
     
-    for (const mat of topMaterials) {
-      if (!dailyData[mat.name]) {
-        dailyData[mat.name] = [];
+    topMaterialIds.forEach(matId => {
+      if (!dailyMaterialTotals[matId]) dailyMaterialTotals[matId] = Array(7).fill(0);
+      if (!dailyMaterialCounts[matId]) dailyMaterialCounts[matId] = Array(7).fill(0);
+      
+      const todayMatTransactions = dayTransactions.filter(t => {
+        try {
+          const itemData = JSON.parse(t.item_data || '{}');
+          return itemData.material_id === matId;
+        } catch (e) { return false; }
+      });
+      
+      const dayPrices = todayMatTransactions.map(t => t.price || 0);
+      if (dayPrices.length > 0) {
+        dailyMaterialTotals[matId][i] = dayPrices.reduce((a, b) => a + b, 0);
+        dailyMaterialCounts[matId][i] = dayPrices.length;
       }
-      
-      const avgPrice = db.prepare(`
-        SELECT AVG(price) as avg_price
-        FROM market_transactions mt
-        WHERE json_extract(mt.item_data, '$.material_id') = ?
-          AND mt.timestamp >= ? AND mt.timestamp < ?
-      `).get(mat.id, dayStart, dayEnd).avg_price;
-      
-      dailyData[mat.name].push(avgPrice ? Math.floor(avgPrice) : 0);
-    }
+    });
   }
   
-  const labels = days;
-  const datasets = Object.entries(dailyData).map(([name, prices], index) => {
-    const colors = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6'];
-    return {
-      name,
-      data: prices,
-      color: colors[index % colors.length]
-    };
-  });
+  const colors = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6'];
+  const datasets = topMaterials.map((matId, index) => ({
+    name: materialMap[matId]?.name || matId,
+    data: Array.from({ length: 7 }, (_, i) => {
+      const count = dailyMaterialCounts[matId]?.[i] || 0;
+      const total = dailyMaterialTotals[matId]?.[i] || 0;
+      return count > 0 ? Math.floor(total / count) : 0;
+    }),
+    color: colors[index % colors.length]
+  }));
   
-  return { labels, datasets };
+  return { labels: days, datasets };
 }
 
-function calculateRadarData(db, weekStart) {
-  const stats = db.prepare(`
-    SELECT 
-      AVG(range) as avg_range,
-      AVG(precision) as avg_precision,
-      AVG(quality) as avg_quality,
-      AVG(affix_count) as avg_affixes,
-      AVG(market_value) as avg_value
-    FROM detectors
-    WHERE created_at >= ?
-  `).get(weekStart);
+function calculateRadarData(weekDetectors) {
+  let totalRange = 0, totalPrecision = 0, totalQuality = 0;
+  let totalAffixes = 0, totalValue = 0, rarityScore = 0;
+  const count = weekDetectors.length;
   
-  const rarityScore = db.prepare(`
-    SELECT 
-      SUM(CASE WHEN rarity = 'legendary' THEN 100
-               WHEN rarity = 'epic' THEN 80
-               WHEN rarity = 'rare' THEN 60
-               WHEN rarity = 'uncommon' THEN 40
-               ELSE 20 END) / COUNT(*) as rarity_score
-    FROM detectors
-    WHERE created_at >= ?
-  `).get(weekStart).rarity_score || 0;
+  if (count === 0) {
+    return {
+      labels: ['探测范围', '精度', '品质', '稀有度', '词缀数', '收藏价值'],
+      values: [0, 0, 0, 0, 0, 0]
+    };
+  }
+  
+  weekDetectors.forEach(d => {
+    totalRange += d.range || 0;
+    totalPrecision += d.precision || 0;
+    totalQuality += d.quality || 0;
+    try {
+      const affixes = JSON.parse(d.affixes || '[]');
+      totalAffixes += affixes.length;
+    } catch (e) {}
+    totalValue += d.market_value || 0;
+    
+    const rarityWeights = {
+      common: 20, uncommon: 40, rare: 60, epic: 80, legendary: 100
+    };
+    rarityScore += rarityWeights[d.rarity] || 20;
+  });
   
   const maxRange = 300;
   const maxPrecision = 100;
@@ -192,17 +270,17 @@ function calculateRadarData(db, weekStart) {
   return {
     labels: ['探测范围', '精度', '品质', '稀有度', '词缀数', '收藏价值'],
     values: [
-      Math.min(Math.floor((stats.avg_range || 0) / maxRange * 100), 100),
-      Math.min(Math.floor((stats.avg_precision || 0) / maxPrecision * 100), 100),
-      Math.min(Math.floor((stats.avg_quality || 0) / maxQuality * 100), 100),
-      Math.min(rarityScore, 100),
-      Math.min(Math.floor((stats.avg_affixes || 0) / maxAffixes * 100), 100),
-      Math.min(Math.floor((stats.avg_value || 0) / maxValue * 100), 100)
+      Math.min(Math.floor((totalRange / count) / maxRange * 100), 100),
+      Math.min(Math.floor((totalPrecision / count) / maxPrecision * 100), 100),
+      Math.min(Math.floor((totalQuality / count) / maxQuality * 100), 100),
+      Math.min(Math.floor(rarityScore / count), 100),
+      Math.min(Math.floor((totalAffixes / count) / maxAffixes * 100), 100),
+      Math.min(Math.floor((totalValue / count) / maxValue * 100), 100)
     ]
   };
 }
 
-function getContestScoreHistory(db, weekStart) {
+function calculateContestScoreHistory(allContests, allContestEntries, weekStart) {
   const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
   const scores = [];
   const entries = [];
@@ -211,22 +289,22 @@ function getContestScoreHistory(db, weekStart) {
     const dayDate = new Date(weekStart + i * 24 * 60 * 60 * 1000);
     const dateStr = dayDate.toISOString().split('T')[0];
     
-    const dayStats = db.prepare(`
-      SELECT AVG(score) as avg_score, COUNT(*) as entry_count
-      FROM contest_entries ce
-      JOIN contests c ON ce.contest_id = c.id
-      WHERE c.date = ?
-    `).get(dateStr);
+    const dayContest = allContests.find(c => c.date === dateStr);
     
-    scores.push(Math.floor(dayStats.avg_score || 0));
-    entries.push(dayStats.entry_count || 0);
+    if (dayContest) {
+      const dayEntries = allContestEntries.filter(e => e.contest_id === dayContest.id);
+      const avgScore = dayEntries.length > 0
+        ? Math.floor(dayEntries.reduce((sum, e) => sum + (e.score || 0), 0) / dayEntries.length)
+        : 0;
+      scores.push(avgScore);
+      entries.push(dayEntries.length);
+    } else {
+      scores.push(0);
+      entries.push(0);
+    }
   }
   
-  return {
-    labels: days,
-    scores,
-    entries
-  };
+  return { labels: days, scores, entries };
 }
 
 router.get('/export/pdf', authMiddleware, (req, res) => {
@@ -235,43 +313,56 @@ router.get('/export/pdf', authMiddleware, (req, res) => {
   const weekNumber = getWeekNumber(now);
   const weekStart = getWeekStart(weekNumber, now.getFullYear());
   
-  const craftingCount = db.prepare(`
-    SELECT COUNT(*) as count FROM crafting_tasks
-    WHERE start_time >= ? AND status = 'completed'
-  `).get(weekStart).count;
+  const allCrafting = db.prepare('SELECT * FROM crafting_tasks').all();
+  const weekCrafting = allCrafting.filter(t => t.start_time >= weekStart && t.status === 'completed');
   
-  const detectorRarity = db.prepare(`
-    SELECT rarity, COUNT(*) as count
-    FROM detectors
-    WHERE created_at >= ?
-    GROUP BY rarity
-  `).all(weekStart);
+  const allDetectors = db.prepare('SELECT * FROM detectors').all();
+  const weekDetectors = allDetectors.filter(d => d.created_at >= weekStart);
   
-  const contestStats = db.prepare(`
-    SELECT COUNT(*) as total_entries, AVG(score) as avg_score
-    FROM contest_entries ce
-    JOIN contests c ON ce.contest_id = c.id
-    WHERE c.date >= ?
-  `).get(weekStart.toISOString().split('T')[0]);
+  const rarityMap = {};
+  weekDetectors.forEach(d => {
+    rarityMap[d.rarity] = (rarityMap[d.rarity] || 0) + 1;
+  });
+  const detectorRarity = Object.entries(rarityMap).map(([rarity, count]) => ({ rarity, count }));
   
-  const marketStats = db.prepare(`
-    SELECT COUNT(*) as total_transactions, SUM(price) as total_volume
-    FROM market_transactions
-    WHERE timestamp >= ?
-  `).get(weekStart);
+  const allContestEntries = db.prepare('SELECT * FROM contest_entries').all();
+  const allContests = db.prepare('SELECT * FROM contests').all();
+  const weekContests = allContests.filter(c => {
+    const contestDate = new Date(c.date).getTime();
+    return contestDate >= weekStart;
+  });
+  const weekContestIds = new Set(weekContests.map(c => c.id));
+  const weekEntries = allContestEntries.filter(e => weekContestIds.has(e.contest_id));
   
-  const topDetectors = db.prepare(`
-    SELECT d.*, p.nickname
-    FROM detectors d
-    JOIN players p ON d.player_id = p.id
-    WHERE d.created_at >= ?
-    ORDER BY d.quality DESC
-    LIMIT 5
-  `).all(weekStart);
+  const contestStats = {
+    total_entries: weekEntries.length,
+    avg_score: weekEntries.length > 0 
+      ? weekEntries.reduce((sum, e) => sum + (e.score || 0), 0) / weekEntries.length 
+      : 0
+  };
   
-  const radarData = calculateRadarData(db, weekStart);
-  const contestScoreHistory = getContestScoreHistory(db, weekStart);
-  const dailyPriceData = getDailyPriceData(db, weekStart);
+  const allTransactions = db.prepare('SELECT * FROM market_transactions').all();
+  const weekTransactions = allTransactions.filter(t => t.timestamp >= weekStart);
+  
+  const marketStats = {
+    total_transactions: weekTransactions.length,
+    total_volume: weekTransactions.reduce((sum, t) => sum + (t.price || 0), 0)
+  };
+  
+  const allPlayers = db.prepare('SELECT * FROM players').all();
+  const playerMap = Object.fromEntries(allPlayers.map(p => [p.id, p]));
+  
+  const topDetectors = [...weekDetectors]
+    .sort((a, b) => (b.quality || 0) - (a.quality || 0))
+    .slice(0, 5)
+    .map(d => ({
+      ...d,
+      nickname: playerMap[d.player_id]?.nickname || '未知'
+    }));
+  
+  const radarData = calculateRadarData(weekDetectors);
+  const contestScoreHistory = calculateContestScoreHistory(allContests, allContestEntries, weekStart);
+  const dailyPriceData = calculateDailyPriceData(weekTransactions, weekStart, db);
   
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename=industry-report-week${weekNumber}.pdf`);
@@ -287,11 +378,11 @@ router.get('/export/pdf', authMiddleware, (req, res) => {
   doc.fontSize(18).text('📊 本周摘要');
   doc.moveDown();
   doc.fontSize(12);
-  doc.text(`• 总制作次数: ${craftingCount}`);
-  doc.text(`• 产出探测器: ${detectorRarity.reduce((sum, d) => sum + d.count, 0)}`);
-  doc.text(`• 大赛参赛数: ${contestStats.total_entries || 0}`);
+  doc.text(`• 总制作次数: ${weekCrafting.length}`);
+  doc.text(`• 产出探测器: ${weekDetectors.length}`);
+  doc.text(`• 大赛参赛数: ${contestStats.total_entries}`);
   doc.text(`• 平均大赛分数: ${Math.floor(contestStats.avg_score || 0)}`);
-  doc.text(`• 交易总数: ${marketStats.total_transactions || 0}`);
+  doc.text(`• 交易总数: ${marketStats.total_transactions}`);
   doc.text(`• 交易总额: ${marketStats.total_volume || 0} 金币`);
   
   doc.moveDown(2);
@@ -315,7 +406,7 @@ router.get('/export/pdf', authMiddleware, (req, res) => {
   });
   
   doc.addPage();
-  doc.fontSize(18).text('� 探测器属性雷达图');
+  doc.fontSize(18).text('📡 探测器属性雷达图');
   doc.moveDown();
   
   const centerX = 300;
@@ -421,31 +512,42 @@ router.get('/export/pdf', authMiddleware, (req, res) => {
   doc.fontSize(18).text('💹 价格走势');
   doc.moveDown();
   
-  dailyPriceData.datasets.forEach(dataset => {
-    doc.fontSize(11).fillColor(dataset.color);
-    doc.text(`• ${dataset.name}: 平均约 ${Math.floor(dataset.data.reduce((a, b) => a + b, 0) / 7)} 金币`);
-  });
+  if (dailyPriceData.datasets.length > 0) {
+    dailyPriceData.datasets.forEach((dataset) => {
+      const avg = dataset.data.reduce((a, b) => a + b, 0) / 7;
+      doc.fontSize(11).fillColor(dataset.color);
+      doc.text(`• ${dataset.name}: 平均约 ${Math.floor(avg)} 金币`);
+    });
+  } else {
+    doc.fontSize(11).fillColor('#666');
+    doc.text('暂无交易数据，在市场进行交易后可查看价格走势');
+  }
   
   doc.addPage();
   doc.fontSize(18).text('🏆 本周最佳探测器');
   doc.moveDown();
   
-  topDetectors.forEach((detector, index) => {
-    doc.fontSize(12).fillColor('#333');
-    doc.text(`#${index + 1} ${detector.name}`);
-    doc.fontSize(10).fillColor('#666');
-    doc.text(`   拥有者: ${detector.nickname}`);
-    doc.text(`   品质: ${detector.quality} | 范围: ${detector.range} | 精度: ${detector.precision}`);
-    doc.moveDown(0.5);
-  });
+  if (topDetectors.length > 0) {
+    topDetectors.forEach((detector, index) => {
+      doc.fontSize(12).fillColor('#333');
+      doc.text(`#${index + 1} ${detector.name}`);
+      doc.fontSize(10).fillColor('#666');
+      doc.text(`   拥有者: ${detector.nickname}`);
+      doc.text(`   品质: ${detector.quality} | 范围: ${detector.range} | 精度: ${detector.precision}`);
+      doc.moveDown(0.5);
+    });
+  } else {
+    doc.fontSize(11).fillColor('#666');
+    doc.text('暂无探测器数据，完成制作后可查看排行榜');
+  }
   
   doc.moveDown(2);
   doc.fontSize(16).fillColor('#333').text('💡 趋势分析');
   doc.moveDown();
   doc.fontSize(11).fillColor('#555');
   
-  if (craftingCount > 0) {
-    doc.text(`• 本周共完成 ${craftingCount} 次制作，产出 ${detectorRarity.reduce((sum, d) => sum + d.count, 0)} 个探测器`);
+  if (weekCrafting.length > 0) {
+    doc.text(`• 本周共完成 ${weekCrafting.length} 次制作，产出 ${weekDetectors.length} 个探测器`);
   } else {
     doc.text('• 本周暂无制作记录，制作后即可查看详细统计');
   }
