@@ -1,0 +1,23 @@
+{
+  "name": "echo-workshop-server",
+  "version": "1.0.0",
+  "description": "回声工坊 - 后端服务",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.4",
+    "cors": "^2.8.5",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "uuid": "^9.0.1",
+    "node-cron": "^3.0.3",
+    "pdfkit": "^0.14.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  }
+}

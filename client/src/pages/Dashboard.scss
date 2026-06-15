@@ -1,0 +1,214 @@
+@import '../styles/variables';
+
+.dashboard {
+  .welcome-section {
+    margin-bottom: 32px;
+    
+    .welcome-text {
+      margin-bottom: 24px;
+      
+      h2 {
+        font-size: 28px;
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+      
+      p {
+        color: $text-muted;
+        font-size: 14px;
+      }
+    }
+    
+    .stats-cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    
+    .stat-card {
+      @include card;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      transition: all 0.3s;
+      
+      &:hover {
+        transform: translateY(-2px);
+        box-shadow: $shadow-md;
+      }
+      
+      .stat-icon {
+        font-size: 32px;
+      }
+      
+      .stat-info {
+        display: flex;
+        flex-direction: column;
+        
+        .stat-value {
+          font-size: 24px;
+          font-weight: 700;
+          background: linear-gradient(135deg, $primary-color, $accent-color);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+        
+        .stat-label {
+          font-size: 12px;
+          color: $text-muted;
+        }
+      }
+    }
+  }
+  
+  .quick-actions {
+    margin-bottom: 32px;
+    
+    .action-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    
+    .action-card {
+      @include card;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      cursor: pointer;
+      transition: all 0.3s;
+      border-left: 4px solid var(--accent-color);
+      
+      &:hover {
+        transform: translateY(-4px);
+        box-shadow: $shadow-md;
+        background: $bg-card-hover;
+        
+        .action-arrow {
+          transform: translateX(4px);
+        }
+      }
+      
+      .action-icon {
+        font-size: 40px;
+      }
+      
+      .action-content {
+        flex: 1;
+        
+        h4 {
+          font-size: 16px;
+          margin-bottom: 4px;
+          font-weight: 600;
+        }
+        
+        p {
+          font-size: 12px;
+          color: $text-muted;
+          line-height: 1.4;
+        }
+      }
+      
+      .action-arrow {
+        font-size: 20px;
+        color: $text-muted;
+        transition: transform 0.3s;
+      }
+    }
+  }
+  
+  .dashboard-bottom {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    
+    .panel {
+      @include card;
+    }
+  }
+  
+  .section-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+  
+  .activity-list {
+    .activity-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid $border-color;
+      
+      &:last-child {
+        border-bottom: none;
+      }
+      
+      .activity-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: $primary-color;
+        margin-top: 5px;
+        flex-shrink: 0;
+        
+        &.gold {
+          background: $warning-color;
+        }
+        
+        &.purple {
+          background: $accent-color;
+        }
+      }
+      
+      .activity-content {
+        flex: 1;
+        
+        .activity-title {
+          display: block;
+          font-size: 14px;
+          font-weight: 500;
+          margin-bottom: 4px;
+        }
+        
+        .activity-desc {
+          display: block;
+          font-size: 12px;
+          color: $text-muted;
+        }
+      }
+    }
+  }
+  
+  .tips-list {
+    .tip-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      
+      .tip-icon {
+        font-size: 20px;
+      }
+      
+      p {
+        font-size: 13px;
+        color: $text-secondary;
+      }
+    }
+  }
+}
+
+@media (max-width: 1200px) {
+  .dashboard {
+    .welcome-section .stats-cards,
+    .quick-actions .action-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .dashboard-bottom {
+      grid-template-columns: 1fr;
+    }
+  }
+}

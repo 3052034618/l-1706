@@ -1,0 +1,361 @@
+@import '../styles/variables';
+
+.market-page {
+  .sound-tide-banner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 24px;
+    background: linear-gradient(90deg, rgba($info-color, 0.2), rgba($primary-color, 0.1));
+    border: 1px solid rgba($info-color, 0.3);
+    border-radius: $radius-md;
+    margin-bottom: 24px;
+    animation: tideGlow 2s ease-in-out infinite;
+    
+    .tide-icon {
+      font-size: 32px;
+    }
+    
+    .tide-info {
+      .tide-title {
+        display: block;
+        font-size: 16px;
+        font-weight: 600;
+        color: $info-color;
+        margin-bottom: 4px;
+      }
+      
+      .tide-desc {
+        font-size: 13px;
+        color: $text-secondary;
+      }
+    }
+  }
+  
+  @keyframes tideGlow {
+    0%, 100% { box-shadow: 0 0 10px rgba($info-color, 0.3); }
+    50% { box-shadow: 0 0 25px rgba($info-color, 0.5); }
+  }
+  
+  .market-header {
+    @include flex-between;
+    margin-bottom: 24px;
+    
+    .tabs {
+      display: flex;
+      gap: 8px;
+      
+      .tab {
+        padding: 10px 20px;
+        background: $bg-card;
+        border: 1px solid $border-color;
+        border-radius: $radius-sm;
+        cursor: pointer;
+        font-size: 14px;
+        
+        &.active {
+          background: $primary-color;
+          border-color: $primary-color;
+          color: white;
+        }
+      }
+    }
+    
+    .filters {
+      select {
+        padding: 10px 16px;
+        background: $bg-card;
+        border: 1px solid $border-color;
+        border-radius: $radius-sm;
+        color: $text-primary;
+        font-size: 14px;
+        cursor: pointer;
+      }
+    }
+  }
+  
+  .listings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+  }
+  
+  .listing-card {
+    @include card;
+    border-width: 2px;
+    transition: all 0.3s;
+    display: flex;
+    flex-direction: column;
+    
+    &:hover {
+      transform: translateY(-4px);
+      box-shadow: $shadow-lg;
+    }
+    
+    .listing-header {
+      @include flex-between;
+      margin-bottom: 12px;
+      
+      .item-type {
+        font-size: 12px;
+        color: $text-muted;
+      }
+      
+      .my-tag {
+        font-size: 10px;
+        padding: 2px 8px;
+        background: rgba($success-color, 0.2);
+        color: $success-color;
+        border-radius: 8px;
+      }
+    }
+    
+    .listing-body {
+      flex: 1;
+      margin-bottom: 16px;
+      
+      .item-name {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+      
+      .rarity-badge {
+        display: inline-block;
+        font-size: 11px;
+        padding: 3px 10px;
+        border-radius: 10px;
+        margin-bottom: 8px;
+      }
+      
+      .tier-tag {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 2px 8px;
+        background: rgba($primary-color, 0.2);
+        color: $primary-color;
+        border-radius: 8px;
+        margin-left: 6px;
+      }
+      
+      .quality-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 10px 0;
+        font-size: 12px;
+        
+        > span:first-child {
+          color: $text-muted;
+        }
+        
+        .quality-bar {
+          flex: 1;
+          height: 6px;
+          background: $bg-darker;
+          border-radius: 3px;
+          overflow: hidden;
+          
+          .quality-fill {
+            height: 100%;
+            border-radius: 3px;
+          }
+        }
+        
+        .quality-value {
+          font-weight: 600;
+          min-width: 30px;
+          text-align: right;
+        }
+      }
+    }
+    
+    .listing-footer {
+      padding-top: 12px;
+      border-top: 1px solid $border-color;
+      margin-bottom: 12px;
+      
+      .seller-info {
+        margin-bottom: 8px;
+        
+        .seller-name {
+          font-size: 12px;
+          color: $text-muted;
+        }
+      }
+      
+      .price-info {
+        @include flex-between;
+        
+        .price-label {
+          font-size: 12px;
+          color: $text-muted;
+        }
+        
+        .price-value {
+          font-size: 18px;
+          font-weight: 700;
+          color: $warning-color;
+        }
+      }
+    }
+    
+    .listing-actions {
+      .buy-btn,
+      .cancel-btn {
+        width: 100%;
+        padding: 10px;
+        border: none;
+        border-radius: $radius-sm;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      
+      .buy-btn {
+        background: linear-gradient(135deg, $success-color, $info-color);
+        color: white;
+        
+        &:hover:not(:disabled) {
+          transform: translateY(-1px);
+        }
+        
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      }
+      
+      .cancel-btn {
+        background: transparent;
+        border: 1px solid $danger-color;
+        color: $danger-color;
+        
+        &:hover {
+          background: rgba($danger-color, 0.1);
+        }
+      }
+    }
+    
+    .price-suggestion {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed $border-color;
+      font-size: 11px;
+      color: $text-muted;
+      text-align: center;
+    }
+  }
+  
+  .empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 60px 20px;
+    color: $text-muted;
+    
+    .empty-icon {
+      font-size: 64px;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+    
+    p {
+      font-size: 14px;
+    }
+  }
+  
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 1000;
+    @include flex-center;
+  }
+  
+  .modal {
+    background: $bg-card;
+    border-radius: $radius-lg;
+    padding: 30px;
+    width: 90%;
+    max-width: 400px;
+    border: 1px solid $border-color;
+    
+    h3 {
+      font-size: 20px;
+      margin-bottom: 20px;
+    }
+    
+    .sell-item-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+      background: rgba($bg-darker, 0.3);
+      border-radius: $radius-sm;
+      margin-bottom: 20px;
+      
+      .item-name {
+        font-size: 15px;
+        font-weight: 500;
+      }
+      
+      .item-rarity {
+        font-size: 13px;
+        font-weight: 600;
+      }
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+      
+      label {
+        display: block;
+        font-size: 13px;
+        margin-bottom: 8px;
+        color: $text-secondary;
+      }
+      
+      input {
+        width: 100%;
+        padding: 12px;
+        background: rgba($bg-darker, 0.5);
+        border: 1px solid $border-color;
+        border-radius: $radius-sm;
+        color: $text-primary;
+        font-size: 14px;
+        
+        &:focus {
+          outline: none;
+          border-color: $primary-color;
+        }
+      }
+    }
+    
+    .modal-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      
+      .cancel-btn {
+        padding: 10px 20px;
+        background: transparent;
+        border: 1px solid $border-color;
+        color: $text-secondary;
+        border-radius: $radius-sm;
+        cursor: pointer;
+      }
+      
+      .confirm-btn {
+        padding: 10px 20px;
+        background: $primary-color;
+        border: none;
+        color: white;
+        border-radius: $radius-sm;
+        cursor: pointer;
+        font-weight: 600;
+      }
+    }
+  }
+}

@@ -1,0 +1,360 @@
+@import '../styles/variables';
+
+.workshop-page {
+  &.no-workshop {
+    @include flex-center;
+    min-height: 60vh;
+    
+    .no-workshop-card {
+      text-align: center;
+      padding: 60px;
+      @include card;
+      
+      .nw-icon {
+        font-size: 80px;
+        margin-bottom: 24px;
+      }
+      
+      h2 {
+        font-size: 24px;
+        margin-bottom: 12px;
+      }
+      
+      p {
+        color: $text-muted;
+        margin-bottom: 32px;
+      }
+      
+      .create-btn {
+        padding: 14px 40px;
+        background: linear-gradient(135deg, $primary-color, $accent-color);
+        color: white;
+        border: none;
+        border-radius: $radius-sm;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        
+        &:hover {
+          transform: translateY(-2px);
+          box-shadow: $shadow-lg;
+        }
+      }
+    }
+  }
+  
+  .workshop-header {
+    @include flex-between;
+    margin-bottom: 24px;
+    padding: 24px;
+    @include card;
+    
+    .workshop-info {
+      h2 {
+        font-size: 24px;
+        margin-bottom: 12px;
+      }
+      
+      .workshop-stats {
+        display: flex;
+        gap: 16px;
+        
+        .stat {
+          padding: 6px 12px;
+          background: rgba($primary-color, 0.1);
+          border-radius: 20px;
+          font-size: 13px;
+          color: $text-secondary;
+        }
+      }
+    }
+    
+    .upgrade-btn {
+      padding: 12px 24px;
+      background: linear-gradient(135deg, $success-color, $info-color);
+      color: white;
+      border: none;
+      border-radius: $radius-sm;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      
+      &:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: $shadow-md;
+      }
+      
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    }
+  }
+  
+  .workshop-content {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 24px;
+  }
+  
+  .members-section {
+    .section-header {
+      @include flex-between;
+      margin-bottom: 16px;
+      
+      h3 {
+        font-size: 18px;
+      }
+      
+      .recruit-btn {
+        padding: 8px 16px;
+        background: $primary-color;
+        color: white;
+        border: none;
+        border-radius: $radius-sm;
+        font-size: 13px;
+        cursor: pointer;
+      }
+    }
+    
+    .echosmiths-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    
+    .echosmith-card {
+      @include card;
+      
+      .es-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+        
+        .es-avatar {
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, $primary-color, $accent-color);
+          @include flex-center;
+          font-size: 20px;
+          font-weight: 600;
+          color: white;
+        }
+        
+        .es-info {
+          h4 {
+            font-size: 16px;
+            margin-bottom: 4px;
+            
+            .chief-badge {
+              font-size: 10px;
+              padding: 2px 6px;
+              background: $warning-color;
+              color: #000;
+              border-radius: 8px;
+              margin-left: 6px;
+            }
+          }
+          
+          .es-role {
+            font-size: 12px;
+            color: $text-muted;
+          }
+        }
+      }
+      
+      .es-level {
+        margin-bottom: 16px;
+        
+        > span {
+          font-size: 13px;
+          color: $text-secondary;
+          display: block;
+          margin-bottom: 6px;
+        }
+        
+        .exp-bar {
+          height: 6px;
+          background: $bg-darker;
+          border-radius: 3px;
+          overflow: hidden;
+          
+          .exp-fill {
+            height: 100%;
+            background: $primary-color;
+            border-radius: 3px;
+          }
+        }
+      }
+      
+      .es-skills {
+        margin-bottom: 12px;
+        
+        .skill-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 8px 0;
+          border-bottom: 1px solid $border-color;
+          
+          &:last-child {
+            border-bottom: none;
+          }
+          
+          .skill-icon {
+            font-size: 18px;
+          }
+          
+          .skill-name {
+            flex: 1;
+            font-size: 13px;
+            color: $text-secondary;
+          }
+          
+          .skill-level {
+            font-size: 14px;
+            font-weight: 600;
+            color: $primary-color;
+          }
+          
+          .skill-up-btn {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: rgba($success-color, 0.2);
+            color: $success-color;
+            border: 1px solid $success-color;
+            cursor: pointer;
+            font-size: 12px;
+            
+            &:hover {
+              background: $success-color;
+              color: white;
+            }
+          }
+        }
+      }
+      
+      .es-footer {
+        padding-top: 12px;
+        border-top: 1px solid $border-color;
+        
+        .hire-cost {
+          font-size: 12px;
+          color: $text-muted;
+        }
+      }
+    }
+  }
+  
+  .workshop-details {
+    .detail-card {
+      @include card;
+      margin-bottom: 16px;
+      
+      h4 {
+        font-size: 15px;
+        margin-bottom: 16px;
+      }
+      
+      .bonus-list,
+      .info-list {
+        .bonus-item,
+        .info-item {
+          display: flex;
+          justify-content: space-between;
+          padding: 8px 0;
+          border-bottom: 1px solid $border-color;
+          font-size: 14px;
+          
+          &:last-child {
+            border-bottom: none;
+          }
+          
+          span:first-child {
+            color: $text-muted;
+          }
+          
+          .bonus-value {
+            font-weight: 600;
+            
+            &.positive {
+              color: $success-color;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 1000;
+  @include flex-center;
+}
+
+.modal {
+  background: $bg-card;
+  border-radius: $radius-lg;
+  padding: 30px;
+  width: 90%;
+  max-width: 400px;
+  border: 1px solid $border-color;
+  
+  h3 {
+    font-size: 20px;
+    margin-bottom: 16px;
+  }
+  
+  .modal-desc {
+    color: $text-muted;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  
+  input {
+    width: 100%;
+    padding: 12px;
+    background: rgba($bg-darker, 0.5);
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    color: $text-primary;
+    font-size: 14px;
+    margin-bottom: 20px;
+    
+    &:focus {
+      outline: none;
+      border-color: $primary-color;
+    }
+  }
+  
+  .modal-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    
+    .cancel-btn {
+      padding: 10px 20px;
+      background: transparent;
+      border: 1px solid $border-color;
+      color: $text-secondary;
+      border-radius: $radius-sm;
+      cursor: pointer;
+    }
+    
+    .confirm-btn {
+      padding: 10px 20px;
+      background: $primary-color;
+      border: none;
+      color: white;
+      border-radius: $radius-sm;
+      cursor: pointer;
+      font-weight: 600;
+    }
+  }
+}

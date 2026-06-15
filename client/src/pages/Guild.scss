@@ -1,0 +1,445 @@
+@import '../styles/variables';
+
+.guild-page {
+  .no-guild {
+    text-align: center;
+    padding: 60px 20px;
+    @include card;
+    margin-bottom: 32px;
+    
+    .no-guild-icon {
+      font-size: 80px;
+      margin-bottom: 20px;
+    }
+    
+    h2 {
+      font-size: 24px;
+      margin-bottom: 12px;
+    }
+    
+    p {
+      color: $text-muted;
+      margin-bottom: 24px;
+    }
+    
+    .no-guild-actions {
+      .create-btn {
+        padding: 14px 40px;
+        background: linear-gradient(135deg, $primary-color, $accent-color);
+        color: white;
+        border: none;
+        border-radius: $radius-sm;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        
+        &:hover {
+          transform: translateY(-2px);
+          box-shadow: $shadow-lg;
+        }
+      }
+    }
+  }
+  
+  .guild-list-section {
+    h3 {
+      font-size: 18px;
+      margin-bottom: 16px;
+    }
+    
+    .guild-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 16px;
+    }
+    
+    .guild-card {
+      @include card;
+      
+      .guild-card-header {
+        @include flex-between;
+        margin-bottom: 12px;
+        
+        h4 {
+          font-size: 16px;
+          font-weight: 600;
+        }
+        
+        .guild-level {
+          font-size: 13px;
+          color: $primary-color;
+          font-weight: 600;
+        }
+      }
+      
+      .guild-info {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 16px;
+        font-size: 13px;
+        color: $text-muted;
+      }
+      
+      .join-btn {
+        width: 100%;
+        padding: 10px;
+        background: $primary-color;
+        color: white;
+        border: none;
+        border-radius: $radius-sm;
+        font-size: 14px;
+        cursor: pointer;
+        
+        &:hover:not(:disabled) {
+          opacity: 0.9;
+        }
+        
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      }
+    }
+  }
+  
+  .guild-header {
+    @include flex-between;
+    margin-bottom: 24px;
+    padding: 24px;
+    @include card;
+    
+    .guild-info {
+      h2 {
+        font-size: 24px;
+        margin-bottom: 12px;
+      }
+      
+      .guild-stats {
+        display: flex;
+        gap: 16px;
+        
+        span {
+          padding: 6px 12px;
+          background: rgba($primary-color, 0.1);
+          border-radius: 20px;
+          font-size: 13px;
+          color: $text-secondary;
+        }
+      }
+    }
+    
+    .leave-btn {
+      padding: 10px 20px;
+      background: transparent;
+      border: 1px solid $danger-color;
+      color: $danger-color;
+      border-radius: $radius-sm;
+      cursor: pointer;
+      
+      &:hover {
+        background: rgba($danger-color, 0.1);
+      }
+    }
+  }
+  
+  .guild-content {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 24px;
+  }
+  
+  .main-section {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  
+  .tower-section {
+    h3 {
+      font-size: 18px;
+      margin-bottom: 16px;
+    }
+    
+    .tower-card {
+      @include card;
+      text-align: center;
+      
+      .tower-icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+        
+        .tower-level {
+          font-size: 14px;
+          font-weight: 700;
+          color: $primary-color;
+        }
+      }
+      
+      .tower-bonuses {
+        margin-bottom: 20px;
+        
+        .bonus-item {
+          display: flex;
+          justify-content: space-between;
+          padding: 8px 0;
+          border-bottom: 1px solid $border-color;
+          font-size: 14px;
+          
+          &:last-child {
+            border-bottom: none;
+          }
+          
+          .positive {
+            color: $success-color;
+            font-weight: 600;
+          }
+        }
+      }
+      
+      .upgrade-tower-btn {
+        width: 100%;
+        padding: 12px;
+        background: linear-gradient(135deg, $primary-color, $accent-color);
+        color: white;
+        border: none;
+        border-radius: $radius-sm;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        
+        &:hover {
+          transform: translateY(-2px);
+        }
+      }
+    }
+  }
+  
+  .guild-bonuses {
+    h3 {
+      font-size: 18px;
+      margin-bottom: 16px;
+    }
+    
+    .bonus-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      
+      .bonus-card {
+        @include card;
+        text-align: center;
+        padding: 20px;
+        
+        .bonus-icon {
+          font-size: 32px;
+          display: block;
+          margin-bottom: 8px;
+        }
+        
+        .bonus-value {
+          display: block;
+          font-size: 24px;
+          font-weight: 700;
+          color: $success-color;
+          margin-bottom: 4px;
+        }
+        
+        .bonus-label {
+          font-size: 13px;
+          color: $text-muted;
+        }
+      }
+    }
+  }
+  
+  .contribute-section {
+    h3 {
+      font-size: 18px;
+      margin-bottom: 16px;
+    }
+    
+    .contribute-card {
+      @include card;
+      
+      .my-contribution {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 16px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid $border-color;
+        
+        .contrib-value {
+          font-size: 20px;
+          font-weight: 700;
+          color: $warning-color;
+        }
+      }
+      
+      .contribute-input {
+        display: flex;
+        gap: 12px;
+        
+        input {
+          flex: 1;
+          padding: 10px 12px;
+          background: rgba($bg-darker, 0.5);
+          border: 1px solid $border-color;
+          border-radius: $radius-sm;
+          color: $text-primary;
+        }
+        
+        button {
+          padding: 10px 20px;
+          background: $primary-color;
+          color: white;
+          border: none;
+          border-radius: $radius-sm;
+          cursor: pointer;
+          font-weight: 500;
+        }
+      }
+    }
+  }
+  
+  .members-section {
+    @include card;
+    
+    h3 {
+      font-size: 18px;
+      margin-bottom: 16px;
+    }
+    
+    .members-list {
+      max-height: 500px;
+      overflow-y: auto;
+    }
+    
+    .member-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px;
+      border-radius: $radius-sm;
+      margin-bottom: 4px;
+      
+      &:hover {
+        background: rgba($primary-color, 0.05);
+      }
+      
+      .member-rank {
+        width: 30px;
+        font-size: 13px;
+        color: $text-muted;
+        font-weight: 600;
+      }
+      
+      .member-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, $primary-color, $accent-color);
+        @include flex-center;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      
+      .member-info {
+        flex: 1;
+        
+        .member-name {
+          font-size: 14px;
+          font-weight: 500;
+          
+          .leader-badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            background: $warning-color;
+            color: #000;
+            border-radius: 8px;
+            margin-left: 6px;
+          }
+        }
+        
+        .member-level {
+          font-size: 12px;
+          color: $text-muted;
+        }
+      }
+      
+      .member-contrib {
+        font-size: 14px;
+        font-weight: 600;
+        color: $warning-color;
+      }
+    }
+  }
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 1000;
+  @include flex-center;
+}
+
+.modal {
+  background: $bg-card;
+  border-radius: $radius-lg;
+  padding: 30px;
+  width: 90%;
+  max-width: 400px;
+  border: 1px solid $border-color;
+  
+  h3 {
+    font-size: 20px;
+    margin-bottom: 12px;
+  }
+  
+  .modal-desc {
+    color: $text-muted;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  
+  input {
+    width: 100%;
+    padding: 12px;
+    background: rgba($bg-darker, 0.5);
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    color: $text-primary;
+    font-size: 14px;
+    margin-bottom: 20px;
+    
+    &:focus {
+      outline: none;
+      border-color: $primary-color;
+    }
+  }
+  
+  .modal-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    
+    .cancel-btn {
+      padding: 10px 20px;
+      background: transparent;
+      border: 1px solid $border-color;
+      color: $text-secondary;
+      border-radius: $radius-sm;
+      cursor: pointer;
+    }
+    
+    .confirm-btn {
+      padding: 10px 20px;
+      background: $primary-color;
+      border: none;
+      color: white;
+      border-radius: $radius-sm;
+      cursor: pointer;
+      font-weight: 600;
+    }
+  }
+}

@@ -1,0 +1,89 @@
+$primary-color: #6c5ce7;
+$secondary-color: #a29bfe;
+$accent-color: #fd79a8;
+$success-color: #00b894;
+$warning-color: #fdcb6e;
+$danger-color: #e17055;
+$info-color: #74b9ff;
+
+$bg-dark: #1a1a2e;
+$bg-darker: #0f0f1a;
+$bg-card: #16213e;
+$bg-card-hover: #1f3460;
+$text-primary: #ffffff;
+$text-secondary: #a0a0c0;
+$text-muted: #6c6c8c;
+$border-color: #2d2d4d;
+
+$radius-sm: 6px;
+$radius-md: 12px;
+$radius-lg: 20px;
+
+$shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+$shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+$shadow-lg: 0 8px 32px rgba(108, 92, 231, 0.3);
+
+$glow-purple: 0 0 20px rgba(108, 92, 231, 0.5);
+$glow-gold: 0 0 20px rgba(253, 203, 110, 0.5);
+
+@mixin flex-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+@mixin flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+@mixin card {
+  background: $bg-card;
+  border-radius: $radius-md;
+  border: 1px solid $border-color;
+  box-shadow: $shadow-sm;
+  padding: 20px;
+}
+
+@mixin button($bg: $primary-color, $color: #fff) {
+  background: $bg;
+  color: $color;
+  border: none;
+  border-radius: $radius-sm;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: $shadow-md;
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+}
+
+@mixin rarity-border($rarity) {
+  @if $rarity == 'legendary' {
+    border-color: #f39c12;
+    box-shadow: $glow-gold;
+  } @else if $rarity == 'epic' {
+    border-color: #9b59b6;
+  } @else if $rarity == 'rare' {
+    border-color: #3498db;
+  } @else if $rarity == 'uncommon' {
+    border-color: #27ae60;
+  } @else {
+    border-color: #95a5a6;
+  }
+}
