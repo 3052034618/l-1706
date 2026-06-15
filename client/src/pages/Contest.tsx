@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../store';
-import { fetchCurrentContest, joinContest, applyContestSkill, fetchContestHistory } from '../store/slices/contestSlice';
+import { fetchCurrentContest, joinContest, applyContestSkill, fetchContestHistory, fetchOpponents, clearExpiredBuffs } from '../store/slices/contestSlice';
 import { fetchDetectors } from '../store/slices/craftingSlice';
 import { RARITY_COLORS, RARITY_NAMES, formatTime } from '../utils/constants';
 import { joinContestRoom, leaveContestRoom } from '../services/socket';
@@ -9,13 +9,16 @@ import './Contest.scss';
 
 const Contest: React.FC = () => {
   const dispatch = useDispatch();
-  const { currentContest, userEntry, standings, history, loading } = useSelector((state: RootState) => state.contest);
+  const { currentContest, userEntry, standings, opponents, history, loading, skillCooldowns, activeBuffs } = useSelector((state: RootState) => state.contest);
   const { detectors } = useSelector((state: RootState) => state.crafting);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [selectedDetector, setSelectedDetector] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'current' | 'history'>('current');
   const [intensity, setIntensity] = useState(0);
   const [wavePattern, setWavePattern] = useState<any[]>([]);
+  const [showTargetSelect, setShowTargetSelect] = useState(false);
+  const [selectedTarget, setSelectedTarget] = useState<any>(null);
+  const [, setTick] = useState(0);
 
   useEffect(() => {
     dispatch(fetchCurrentContest() as any);
@@ -33,6 +36,12 @@ const Contest: React.FC = () => {
       }
     };
   }, [currentContest?.id]);
+
+  useEffect(() => {
+    if (userEntry) {
+      dispatch(fetchOpponents() as any);
+    }
+  }, [userEntry, dispatch]);
 
   useEffect(() => {
     if (userEntry) {
@@ -55,7 +64,14 @@ const Contest: React.FC = () => {
       interval = setInterval(() => {
         const baseIntensity = userEntry.current_intensity || 50;
         const variation = Math.sin(Date.now() / 500) * 10;
-        setIntensity(Math.floor(baseIntensity + variation));
+        
+        let finalIntensity = baseIntensity + variation;
+        const hasFocusBoost = activeBuffs.some((b: any) => b.type === 'focus_boost' && b.endTime > Date.now());
+        if (hasFocusBoost) {
+          finalIntensity *= 1.2;
+        }
+        
+        setIntensity(Math.floor(finalIntensity));
         
         setWavePattern(prev => {
           const newPattern = [...prev.slice(1)];
@@ -65,10 +81,26 @@ const Contest: React.FC = () => {
           });
           return newPattern;
         });
+        
+        dispatch(clearExpiredBuffs());
+        setTick(t => t + 1);
       }, 200);
     }
     return () => clearInterval(interval);
-  }, [userEntry, currentContest?.status]);
+  }, [userEntry, currentContest?.status, activeBuffs, dispatch]);
+
+  const getSkillCooldownRemaining = useCallback((skillType: string) => {
+    const endTime = skillCooldowns[skillType];
+    if (!endTime) return 0;
+    const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+    return remaining;
+  }, [skillCooldowns]);
+
+  const getBuffRemainingTime = useCallback((buffType: string) => {
+    const buff = activeBuffs.find((b: any) => b.type === buffType);
+    if (!buff) return 0;
+    return Math.max(0, Math.ceil((buff.endTime - Date.now()) / 1000));
+  }, [activeBuffs]);
 
   const handleJoin = () => {
     if (!selectedDetector) return;
@@ -79,11 +111,48 @@ const Contest: React.FC = () => {
   };
 
   const handleUseSkill = (skillType: string) => {
-    dispatch(applyContestSkill({ skillType }) as any);
+    if (getSkillCooldownRemaining(skillType) > 0) return;
+    
+    if (skillType === 'interference_pulse') {
+      if (opponents.length === 0) {
+        alert('暂无对手可干扰');
+        return;
+      }
+      setShowTargetSelect(true);
+      return;
+    }
+    
+    dispatch(applyContestSkill({ skillType }) as any).then((result: any) => {
+      if (result.meta.requestStatus === 'fulfilled') {
+        setTimeout(() => {
+          dispatch(fetchCurrentContest() as any);
+          dispatch(fetchOpponents() as any);
+        }, 500);
+      }
+    });
+  };
+
+  const handleConfirmInterference = () => {
+    if (!selectedTarget) return;
+    
+    dispatch(applyContestSkill({ 
+      skillType: 'interference_pulse', 
+      targetEntryId: selectedTarget.id 
+    }) as any).then((result: any) => {
+      if (result.meta.requestStatus === 'fulfilled') {
+        setShowTargetSelect(false);
+        setSelectedTarget(null);
+        setTimeout(() => {
+          dispatch(fetchCurrentContest() as any);
+          dispatch(fetchOpponents() as any);
+        }, 500);
+      }
+    });
   };
 
   const contestStatus = currentContest?.status;
   const isActive = contestStatus === 'active';
+  const hasFocusBoost = activeBuffs.some((b: any) => b.type === 'focus_boost' && b.endTime > Date.now());
 
   return (
     <div className="contest-page">
@@ -125,12 +194,18 @@ const Contest: React.FC = () => {
               <div className="my-entry">
                 <h3>我的参赛</h3>
                 
+                {hasFocusBoost && (
+                  <div className="buff-indicator focus">
+                    🎯 聚焦增强生效中 - 剩余 {getBuffRemainingTime('focus_boost')}s
+                  </div>
+                )}
+                
                 <div className="wave-visualization">
                   <div className="wave-canvas">
                     {wavePattern.map((point, i) => (
                       <div
                         key={i}
-                        className="wave-bar"
+                        className={`wave-bar ${hasFocusBoost ? 'boosted' : ''}`}
                         style={{ height: `${point.amplitude * 100}%` }}
                       ></div>
                     ))}
@@ -138,7 +213,7 @@ const Contest: React.FC = () => {
                   <div className="wave-stats">
                     <div className="stat">
                       <span className="label">当前强度</span>
-                      <span className="value">{intensity}</span>
+                      <span className={`value ${hasFocusBoost ? 'boosted' : ''}`}>{intensity}</span>
                     </div>
                     <div className="stat">
                       <span className="label">当前分数</span>
@@ -171,21 +246,58 @@ const Contest: React.FC = () => {
                     <h4>比赛技能</h4>
                     <div className="skills">
                       <button 
-                        className="skill-btn focus"
+                        className={`skill-btn focus ${hasFocusBoost ? 'active' : ''}`}
                         onClick={() => handleUseSkill('focus_boost')}
+                        disabled={getSkillCooldownRemaining('focus_boost') > 0}
                       >
                         <span className="skill-icon">🎯</span>
                         <span className="skill-name">聚焦增强</span>
                         <span className="skill-desc">强度+20%，持续10秒</span>
+                        {getSkillCooldownRemaining('focus_boost') > 0 && (
+                          <span className="cooldown">
+                            冷却 {getSkillCooldownRemaining('focus_boost')}s
+                          </span>
+                        )}
                       </button>
                       <button 
                         className="skill-btn interference"
                         onClick={() => handleUseSkill('interference_pulse')}
+                        disabled={getSkillCooldownRemaining('interference_pulse') > 0}
                       >
                         <span className="skill-icon">💫</span>
                         <span className="skill-name">干扰脉冲</span>
                         <span className="skill-desc">对手-15%，持续8秒</span>
+                        {getSkillCooldownRemaining('interference_pulse') > 0 && (
+                          <span className="cooldown">
+                            冷却 {getSkillCooldownRemaining('interference_pulse')}s
+                          </span>
+                        )}
                       </button>
+                    </div>
+                  </div>
+                )}
+
+                {isActive && opponents.length > 0 && (
+                  <div className="opponents-panel">
+                    <h4>可干扰对手 (点击查看)</h4>
+                    <div className="opponents-list">
+                      {opponents.slice(0, 5).map((opponent: any, index: number) => (
+                        <div 
+                          key={opponent.id} 
+                          className="opponent-item"
+                          onClick={() => { setSelectedTarget(opponent); setShowTargetSelect(true); }}
+                        >
+                          <span className="opp-rank">#{index + 1}</span>
+                          <span className="opp-name">{opponent.nickname}</span>
+                          <span 
+                            className="opp-rarity"
+                            style={{ color: RARITY_COLORS[opponent.rarity] }}
+                          >
+                            {RARITY_NAMES[opponent.rarity]}
+                          </span>
+                          <span className="opp-score">{opponent.score}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -262,7 +374,7 @@ const Contest: React.FC = () => {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>选择探测器参赛</h3>
             <div className="detector-select-list">
-              {detectors.filter(d => d.is_tradable !== 0 || true).map((detector: any) => (
+              {detectors.map((detector: any) => (
                 <div
                   key={detector.id}
                   className={`detector-option ${selectedDetector?.id === detector.id ? 'selected' : ''}`}
@@ -294,6 +406,48 @@ const Contest: React.FC = () => {
                 disabled={!selectedDetector}
               >
                 确认参赛
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTargetSelect && (
+        <div className="modal-overlay" onClick={() => { setShowTargetSelect(false); setSelectedTarget(null); }}>
+          <div className="modal target-select-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>选择干扰目标</h3>
+            <p className="modal-hint">选择一名对手释放干扰脉冲，降低其声波强度15%</p>
+            <div className="target-list">
+              {opponents.map((opponent: any, index: number) => (
+                <div
+                  key={opponent.id}
+                  className={`target-item ${selectedTarget?.id === opponent.id ? 'selected' : ''}`}
+                  onClick={() => setSelectedTarget(opponent)}
+                >
+                  <span className="target-rank">#{index + 1}</span>
+                  <div className="target-info">
+                    <span className="target-name">{opponent.nickname}</span>
+                    <span 
+                      className="target-detector"
+                      style={{ color: RARITY_COLORS[opponent.rarity] }}
+                    >
+                      {opponent.detector_name}
+                    </span>
+                  </div>
+                  <span className="target-score">{opponent.score} 分</span>
+                </div>
+              ))}
+            </div>
+            <div className="modal-actions">
+              <button className="cancel-btn" onClick={() => { setShowTargetSelect(false); setSelectedTarget(null); }}>
+                取消
+              </button>
+              <button 
+                className="confirm-btn interference"
+                onClick={handleConfirmInterference}
+                disabled={!selectedTarget}
+              >
+                💫 释放干扰
               </button>
             </div>
           </div>

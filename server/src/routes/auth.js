@@ -12,7 +12,9 @@ function generateToken(userId) {
 }
 
 function authMiddleware(req, res, next) {
-  const token = req.headers.authorization?.replace('Bearer ', '');
+  const headerToken = req.headers.authorization?.replace('Bearer ', '');
+  const queryToken = req.query.token;
+  const token = headerToken || queryToken;
   
   if (!token) {
     return res.status(401).json({ error: '未登录' });

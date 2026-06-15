@@ -147,5 +147,39 @@ router.get('/preview', authMiddleware, (req, res) => {
   });
 });
 
+router.post('/preview', authMiddleware, (req, res) => {
+  const { recipeId, echosmithId, materials } = req.body;
+  const db = getDb();
+  
+  const recipe = db.prepare('SELECT * FROM recipes WHERE id = ?').get(recipeId);
+  const echosmith = db.prepare('SELECT * FROM echosmiths WHERE id = ?').get(echosmithId);
+  
+  if (!recipe || !echosmith) {
+    return res.status(400).json({ error: '配方或回声师不存在' });
+  }
+  
+  if (!materials || !Array.isArray(materials) || materials.length === 0) {
+    return res.status(400).json({ error: '材料列表无效' });
+  }
+  
+  const materialsWithData = materials.map(m => {
+    const matInfo = db.prepare('SELECT * FROM materials WHERE id = ?').get(m.material_id || m.id);
+    return {
+      ...m,
+      type: matInfo?.type || 'common',
+      quality: m.quality || matInfo?.quality || 50,
+      rarity: m.rarity || matInfo?.rarity || 'common'
+    };
+  });
+  
+  const { estimateCraftingResult } = require('../engine/craftingEngine');
+  const estimated = estimateCraftingResult(recipe, materialsWithData, echosmith);
+  
+  res.json({
+    estimated,
+    craftTime: recipe.craft_time
+  });
+});
+
 module.exports = router;
 module.exports.setGameEngine = setGameEngine;

@@ -1,19 +1,30 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../store';
-import { fetchRecipes, fetchMaterials, fetchDetectors, fetchTasks, startCrafting } from '../store/slices/craftingSlice';
+import { fetchRecipes, fetchMaterials, fetchDetectors, fetchTasks, startCrafting, previewCrafting } from '../store/slices/craftingSlice';
 import { fetchWorkshop } from '../store/slices/workshopSlice';
 import { RARITY_COLORS, RARITY_NAMES, AFFIX_INFO, formatTime, getQualityColor } from '../utils/constants';
 import './Crafting.scss';
 
+const MATERIAL_TYPE_NAMES: Record<string, string> = {
+  crystal: '水晶',
+  resonator: '共鸣器',
+  core: '核心',
+  amplifier: '放大器',
+  essence: '精华'
+};
+
 const Crafting: React.FC = () => {
   const dispatch = useDispatch();
-  const { recipes, materials, detectors, tasks, crafting } = useSelector((state: RootState) => state.crafting);
+  const { recipes, materials, detectors, tasks, crafting, preview, previewLoading } = useSelector((state: RootState) => state.crafting);
   const { workshop, echosmiths } = useSelector((state: RootState) => state.workshop);
   const [selectedRecipe, setSelectedRecipe] = useState<any>(null);
   const [selectedEchosmith, setSelectedEchosmith] = useState<any>(null);
-  const [selectedMaterials, setSelectedMaterials] = useState<any[]>([]);
+  const [orderedMaterials, setOrderedMaterials] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'craft' | 'detectors' | 'tasks'>('craft');
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const previewDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     dispatch(fetchRecipes() as any);
@@ -31,22 +42,107 @@ const Crafting: React.FC = () => {
 
   useEffect(() => {
     if (echosmiths.length > 0 && !selectedEchosmith) {
-      setSelectedEchosmith(echosmiths.find(e => e.is_chief) || echosmiths[0]);
+      setSelectedEchosmith(echosmiths.find((e: any) => e.is_chief) || echosmiths[0]);
     }
   }, [echosmiths, selectedEchosmith]);
 
-  const handleStartCrafting = () => {
-    if (!selectedRecipe || !selectedEchosmith) return;
+  useEffect(() => {
+    if (selectedRecipe && materials.length > 0) {
+      const initialMaterials = selectedRecipe.materials.map((m: any) => {
+        const playerMat = materials.find((pm: any) => pm.material_id === m.material_id);
+        return {
+          material_id: m.material_id,
+          quantity: m.quantity,
+          quality: playerMat?.quality || 50,
+          rarity: playerMat?.rarity || 'common',
+          name: playerMat?.name || m.material_id,
+          icon: playerMat?.icon || '📦',
+          type: playerMat?.type || 'common'
+        };
+      });
+      setOrderedMaterials(initialMaterials);
+    }
+  }, [selectedRecipe, materials]);
+
+  const debouncedPreview = useCallback(() => {
+    if (previewDebounceRef.current) {
+      clearTimeout(previewDebounceRef.current);
+    }
+    previewDebounceRef.current = setTimeout(() => {
+      if (selectedRecipe && selectedEchosmith && orderedMaterials.length > 0) {
+        const previewMats = orderedMaterials.map(m => ({
+          material_id: m.material_id,
+          quality: m.quality,
+          rarity: m.rarity
+        }));
+        dispatch(previewCrafting({
+          recipeId: selectedRecipe.id,
+          echosmithId: selectedEchosmith.id,
+          materials: previewMats
+        }) as any);
+      }
+    }, 150);
+  }, [selectedRecipe, selectedEchosmith, orderedMaterials, dispatch]);
+
+  useEffect(() => {
+    debouncedPreview();
+  }, [orderedMaterials, selectedEchosmith, debouncedPreview]);
+
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex !== null && draggedIndex !== index) {
+      setDragOverIndex(index);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === targetIndex) {
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+
+    const newMaterials = [...orderedMaterials];
+    const [removed] = newMaterials.splice(draggedIndex, 1);
+    newMaterials.splice(targetIndex, 0, removed);
     
-    const materialData = selectedRecipe.materials.map((m: any) => {
-      const playerMat = materials.find((pm: any) => pm.material_id === m.material_id);
-      return {
-        material_id: m.material_id,
-        quantity: m.quantity,
-        quality: playerMat?.quality || 50,
-        rarity: playerMat?.rarity || 'common'
-      };
-    });
+    setOrderedMaterials(newMaterials);
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const moveMaterial = (index: number, direction: 'up' | 'down') => {
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= orderedMaterials.length) return;
+    
+    const newMaterials = [...orderedMaterials];
+    [newMaterials[index], newMaterials[newIndex]] = [newMaterials[newIndex], newMaterials[index]];
+    setOrderedMaterials(newMaterials);
+  };
+
+  const handleStartCrafting = () => {
+    if (!selectedRecipe || !selectedEchosmith || !canCraft) return;
+    
+    const materialData = orderedMaterials.map(m => ({
+      material_id: m.material_id,
+      quantity: m.quantity,
+      quality: m.quality,
+      rarity: m.rarity
+    }));
     
     dispatch(startCrafting({
       recipeId: selectedRecipe.id,
@@ -56,14 +152,17 @@ const Crafting: React.FC = () => {
       if (result.meta.requestStatus === 'fulfilled') {
         dispatch(fetchTasks() as any);
         dispatch(fetchMaterials() as any);
+        dispatch(fetchDetectors() as any);
       }
     });
   };
 
-  const canCraft = selectedRecipe && selectedEchosmith && selectedRecipe.materials?.every((m: any) => {
+  const canCraft = selectedRecipe && selectedEchosmith && orderedMaterials.every((m: any) => {
     const playerMat = materials.find((pm: any) => pm.material_id === m.material_id);
     return playerMat && playerMat.quantity >= m.quantity;
   });
+
+  const estimated = preview?.estimated;
 
   return (
     <div className="crafting-page">
@@ -75,7 +174,7 @@ const Crafting: React.FC = () => {
           🔮 我的探测器 ({detectors.length})
         </div>
         <div className={`tab ${activeTab === 'tasks' ? 'active' : ''}`} onClick={() => setActiveTab('tasks')}>
-          ⏳ 制作任务 ({tasks.filter(t => t.status === 'crafting').length})
+          ⏳ 制作任务 ({tasks.filter((t: any) => t.status === 'crafting').length})
         </div>
       </div>
 
@@ -134,47 +233,106 @@ const Crafting: React.FC = () => {
                 </div>
 
                 <div className="section">
-                  <h4>所需材料</h4>
+                  <h4>材料顺序 (拖拽调整，位置越前权重越高)</h4>
                   <div className="materials-list">
-                    {selectedRecipe.materials?.map((m: any) => {
+                    {orderedMaterials.map((m: any, index: number) => {
                       const playerMat = materials.find((pm: any) => pm.material_id === m.material_id);
                       const hasEnough = playerMat && playerMat.quantity >= m.quantity;
                       return (
-                        <div key={m.material_id} className={`material-row ${hasEnough ? '' : 'insufficient'}`}>
+                        <div
+                          key={m.material_id + '-' + index}
+                          className={`material-slot ${!hasEnough ? 'insufficient' : ''} ${draggedIndex === index ? 'dragging' : ''} ${dragOverIndex === index ? 'drag-over' : ''}`}
+                          draggable
+                          onDragStart={() => handleDragStart(index)}
+                          onDragOver={(e) => handleDragOver(e, index)}
+                          onDragLeave={handleDragLeave}
+                          onDrop={(e) => handleDrop(e, index)}
+                          onDragEnd={handleDragEnd}
+                        >
+                          <span className="slot-number">{index + 1}</span>
+                          <span className="drag-handle">⋮⋮</span>
                           <span className="mat-icon">{playerMat?.icon || '📦'}</span>
                           <span className="mat-name">{playerMat?.name || m.material_id}</span>
+                          <span className="mat-type">
+                            {MATERIAL_TYPE_NAMES[playerMat?.type] || playerMat?.type || '材料'}
+                          </span>
                           <span className="mat-rarity" style={{ color: RARITY_COLORS[playerMat?.rarity] }}>
                             {RARITY_NAMES[playerMat?.rarity] || ''}
                           </span>
                           <span className="mat-qty">
                             {playerMat?.quantity || 0} / {m.quantity}
                           </span>
+                          <div className="move-buttons">
+                            <button 
+                              className="move-btn" 
+                              onClick={(e) => { e.stopPropagation(); moveMaterial(index, 'up'); }}
+                              disabled={index === 0}
+                            >↑</button>
+                            <button 
+                              className="move-btn" 
+                              onClick={(e) => { e.stopPropagation(); moveMaterial(index, 'down'); }}
+                              disabled={index === orderedMaterials.length - 1}
+                            >↓</button>
+                          </div>
                         </div>
                       );
                     })}
+                    <p className="materials-hint">
+                      💡 提示：不同类型材料放在不同位置会影响最终属性。水晶侧重范围，共鸣器侧重精度，放大器提升词缀几率
+                    </p>
                   </div>
                 </div>
 
                 <div className="section">
-                  <h4>预估属性</h4>
+                  <h4>预估属性 {previewLoading && <span className="loading-hint">(计算中...)</span>}</h4>
                   <div className="estimates">
                     <div className="estimate-item">
                       <span className="est-label">品质</span>
-                      <span className="est-value" style={{ color: getQualityColor(60) }}>~{50 + (selectedEchosmith?.detection_skill || 1) * 5}</span>
+                      <span className="est-value" style={{ color: estimated ? getQualityColor(estimated.quality) : '#888' }}>
+                        ~{estimated?.quality || '--'}
+                      </span>
                     </div>
                     <div className="estimate-item">
                       <span className="est-label">探测范围</span>
-                      <span className="est-value">~{Math.floor(selectedRecipe.base_range * 1.1)}</span>
+                      <span className="est-value">
+                        ~{estimated?.range || '--'}
+                      </span>
                     </div>
                     <div className="estimate-item">
                       <span className="est-label">探测精度</span>
-                      <span className="est-value">~{Math.floor(selectedRecipe.base_precision * 1.1)}</span>
+                      <span className="est-value">
+                        ~{estimated?.precision || '--'}
+                      </span>
                     </div>
                     <div className="estimate-item">
                       <span className="est-label">词缀几率</span>
-                      <span className="est-value">~{Math.floor(20 + (selectedEchosmith?.detection_skill || 1) * 5)}%</span>
+                      <span className="est-value">
+                        ~{estimated?.affixChance?.toFixed?.(1) || '--'}%
+                      </span>
                     </div>
                   </div>
+                  {estimated && (
+                    <div className="estimates" style={{ marginTop: '12px', gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                      <div className="estimate-item">
+                        <span className="est-label">稀有度</span>
+                        <span className="est-value" style={{ color: RARITY_COLORS[estimated.rarity] }}>
+                          {RARITY_NAMES[estimated.rarity]}
+                        </span>
+                      </div>
+                      <div className="estimate-item">
+                        <span className="est-label">隐藏属性</span>
+                        <span className="est-value">
+                          ~{estimated.hiddenChance || 0}%
+                        </span>
+                      </div>
+                      <div className="estimate-item">
+                        <span className="est-label">制作时间</span>
+                        <span className="est-value">
+                          {formatTime(preview?.craftTime || selectedRecipe.craft_time)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <button 

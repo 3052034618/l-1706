@@ -46,6 +46,11 @@ const playerSlice = createSlice({
       state.data = null;
       state.isLoggedIn = false;
       localStorage.removeItem('token');
+    },
+    updateGold: (state, action) => {
+      if (state.data) {
+        state.data.gold = action.payload;
+      }
     }
   },
   extraReducers: (builder) => {
@@ -96,5 +101,5 @@ const playerSlice = createSlice({
   }
 });
 
-export const { logout } = playerSlice.actions;
+export const { logout, updateGold } = playerSlice.actions;
 export default playerSlice.reducer;

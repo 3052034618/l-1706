@@ -11,6 +11,8 @@ class GameEngine {
     this.activeContests = new Map();
     this.onlinePlayers = new Set();
     this.craftingTasks = new Map();
+    this.contestUpdateTimers = new Map();
+    this.entryBuffs = new Map();
   }
 
   async init() {
@@ -61,6 +63,19 @@ class GameEngine {
       }
     }
 
+    const materialsWithInfo = materials.map(m => {
+      const matInfo = this.db.prepare('SELECT * FROM materials WHERE id = ?').get(m.material_id || m.id);
+      return {
+        ...m,
+        id: m.material_id || m.id,
+        material_id: m.material_id || m.id,
+        type: matInfo?.type || 'common',
+        quality: m.quality || matInfo?.quality || 50,
+        rarity: m.rarity || matInfo?.rarity || 'common',
+        quantity: m.quantity || 1
+      };
+    });
+
     const taskId = uuid();
     const craftTime = recipe.craft_time * 1000;
     const startTime = Date.now();
@@ -75,7 +90,7 @@ class GameEngine {
         `).run(req.quantity, playerId, req.material_id);
       });
 
-      const materialsData = JSON.stringify(materials);
+      const materialsData = JSON.stringify(materialsWithInfo);
       
       this.db.prepare(`
         INSERT INTO crafting_tasks 
@@ -204,7 +219,215 @@ class GameEngine {
     }
 
     this.activeContests.set(contest.id, contest);
+    
+    if (contest.status === 'active') {
+      this.startContestUpdates(contest.id);
+    }
+    
     return contest;
+  }
+
+  startContestUpdates(contestId) {
+    if (this.contestUpdateTimers.has(contestId)) return;
+    
+    const timer = setInterval(() => {
+      this.updateContestScores(contestId);
+    }, 2000);
+    
+    this.contestUpdateTimers.set(contestId, timer);
+    console.log(`🏆 大赛 ${contestId} 实时更新已启动`);
+  }
+
+  stopContestUpdates(contestId) {
+    const timer = this.contestUpdateTimers.get(contestId);
+    if (timer) {
+      clearInterval(timer);
+      this.contestUpdateTimers.delete(contestId);
+    }
+  }
+
+  updateContestScores(contestId) {
+    const entries = this.db.prepare(`
+      SELECT * FROM contest_entries WHERE contest_id = ?
+    `).all(contestId);
+    
+    if (entries.length === 0) return;
+    
+    const now = Date.now();
+    
+    entries.forEach(entry => {
+      const detector = this.db.prepare('SELECT * FROM detectors WHERE id = ?').get(entry.detector_id);
+      if (!detector) return;
+      
+      const timeElapsed = (now - entry.submitted_at) / 1000;
+      const waveData = contestEngine.generateSoundWaveData(detector, timeElapsed);
+      
+      let intensity = waveData.intensity;
+      
+      const buffs = this.entryBuffs.get(entry.id) || [];
+      buffs.forEach(buff => {
+        if (buff.endTime > now) {
+          intensity *= buff.multiplier;
+        }
+      });
+      
+      const activeBuffs = buffs.filter(b => b.endTime > now);
+      this.entryBuffs.set(entry.id, activeBuffs);
+      
+      const baseScore = contestEngine.calculateBaseScore(detector, { ...waveData, intensity });
+      const audienceBonus = contestEngine.calculateAudienceResonance(detector, baseScore.total, timeElapsed);
+      const totalScore = Math.floor(baseScore.total + audienceBonus);
+      
+      this.db.prepare(`
+        UPDATE contest_entries 
+        SET score = ?, current_intensity = ?, audience_resonance = ?,
+            rarity_score = ?, frequency_score = ?, intensity_score = ?
+        WHERE id = ?
+      `).run(
+        totalScore, 
+        Math.floor(intensity),
+        audienceBonus,
+        baseScore.rarity,
+        baseScore.frequency,
+        baseScore.intensity,
+        entry.id
+      );
+    });
+    
+    const standings = this.getContestStandings(contestId);
+    
+    if (global.io) {
+      global.io.to(`contest_${contestId}`).emit('contest_update', {
+        contestId,
+        standings: standings.slice(0, 50),
+        timestamp: now
+      });
+    }
+  }
+
+  useContestSkill(playerId, skillType, targetEntryId = null) {
+    const today = new Date().toISOString().split('T')[0];
+    const contest = this.db.prepare('SELECT * FROM contests WHERE date = ?').get(today);
+    
+    if (!contest || contest.status !== 'active') {
+      throw new Error('比赛未进行中');
+    }
+    
+    const entry = this.db.prepare(`
+      SELECT * FROM contest_entries 
+      WHERE contest_id = ? AND player_id = ?
+    `).get(contest.id, playerId);
+    
+    if (!entry) {
+      throw new Error('未参加比赛');
+    }
+    
+    const skill = contestEngine.SKILL_EFFECTS[skillType];
+    if (!skill) {
+      throw new Error('技能不存在');
+    }
+    
+    const lastUsed = this.getSkillCooldown(entry.id, skillType);
+    const now = Date.now();
+    
+    if (now - lastUsed < skill.cooldown * 1000) {
+      const remaining = Math.ceil((skill.cooldown * 1000 - (now - lastUsed)) / 1000);
+      throw new Error(`技能冷却中，剩余 ${remaining} 秒`);
+    }
+    
+    this.setSkillCooldown(entry.id, skillType, now);
+    
+    let targetEntry = null;
+    
+    if (skillType === 'focus_boost') {
+      const currentBuffs = this.entryBuffs.get(entry.id) || [];
+      currentBuffs.push({
+        type: 'focus_boost',
+        multiplier: skill.effect.intensityMultiplier,
+        endTime: now + skill.duration * 1000
+      });
+      this.entryBuffs.set(entry.id, currentBuffs);
+      
+    } else if (skillType === 'interference_pulse' && targetEntryId) {
+      targetEntry = this.db.prepare('SELECT * FROM contest_entries WHERE id = ?').get(targetEntryId);
+      
+      if (!targetEntry || targetEntry.contest_id !== contest.id) {
+        throw new Error('目标无效');
+      }
+      
+      if (targetEntry.id === entry.id) {
+        throw new Error('不能对自己使用干扰');
+      }
+      
+      const targetBuffs = this.entryBuffs.get(targetEntryId) || [];
+      targetBuffs.push({
+        type: 'interference_pulse',
+        multiplier: skill.effect.opponentDebuff,
+        endTime: now + skill.duration * 1000
+      });
+      this.entryBuffs.set(targetEntryId, targetBuffs);
+    }
+    
+    if (global.io) {
+      global.io.to(`contest_${contest.id}`).emit('skill_used', {
+        entryId: entry.id,
+        playerId,
+        skillType,
+        targetEntryId,
+        effect: skill.effect,
+        duration: skill.duration,
+        timestamp: now
+      });
+    }
+    
+    return {
+      success: true,
+      skill: skillType,
+      duration: skill.duration,
+      cooldown: skill.cooldown,
+      targetAffected: !!targetEntry
+    };
+  }
+
+  getSkillCooldown(entryId, skillType) {
+    const key = `cooldown_${entryId}_${skillType}`;
+    return this.skillCooldowns?.get?.(key) || 0;
+  }
+
+  setSkillCooldown(entryId, skillType, timestamp) {
+    if (!this.skillCooldowns) {
+      this.skillCooldowns = new Map();
+    }
+    const key = `cooldown_${entryId}_${skillType}`;
+    this.skillCooldowns.set(key, timestamp);
+  }
+
+  getMatchedOpponents(playerId, contestId = null) {
+    if (!contestId) {
+      const today = new Date().toISOString().split('T')[0];
+      const contest = this.db.prepare('SELECT * FROM contests WHERE date = ?').get(today);
+      if (!contest) return [];
+      contestId = contest.id;
+    }
+    
+    const playerEntry = this.db.prepare(`
+      SELECT * FROM contest_entries 
+      WHERE contest_id = ? AND player_id = ?
+    `).get(contestId, playerId);
+    
+    if (!playerEntry) return [];
+    
+    const allEntries = this.db.prepare(`
+      SELECT ce.*, p.nickname, p.avatar, d.name as detector_name, d.rarity, d.quality, d.range, d.precision
+      FROM contest_entries ce
+      JOIN players p ON ce.player_id = p.id
+      JOIN detectors d ON ce.detector_id = d.id
+      WHERE ce.contest_id = ? AND ce.id != ?
+      ORDER BY ce.score DESC
+      LIMIT 10
+    `).all(contestId, playerEntry.id);
+    
+    return allEntries;
   }
 
   joinContest(playerId, detectorId, contestId = null) {

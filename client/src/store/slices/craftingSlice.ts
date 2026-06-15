@@ -8,6 +8,8 @@ interface CraftingState {
   tasks: any[];
   loading: boolean;
   crafting: boolean;
+  preview: any;
+  previewLoading: boolean;
 }
 
 const initialState: CraftingState = {
@@ -16,7 +18,9 @@ const initialState: CraftingState = {
   detectors: [],
   tasks: [],
   loading: false,
-  crafting: false
+  crafting: false,
+  preview: null,
+  previewLoading: false
 };
 
 export const fetchRecipes = createAsyncThunk('crafting/recipes', async () => {
@@ -43,6 +47,14 @@ export const startCrafting = createAsyncThunk(
   'crafting/start',
   async ({ recipeId, echosmithId, materials }: any) => {
     const response = await api.post('/crafting/start', { recipeId, echosmithId, materials });
+    return response.data;
+  }
+);
+
+export const previewCrafting = createAsyncThunk(
+  'crafting/preview',
+  async ({ recipeId, echosmithId, materials }: any) => {
+    const response = await api.post('/crafting/preview', { recipeId, echosmithId, materials });
     return response.data;
   }
 );
@@ -86,6 +98,16 @@ const craftingSlice = createSlice({
       })
       .addCase(startCrafting.rejected, (state) => {
         state.crafting = false;
+      })
+      .addCase(previewCrafting.pending, (state) => {
+        state.previewLoading = true;
+      })
+      .addCase(previewCrafting.fulfilled, (state, action) => {
+        state.previewLoading = false;
+        state.preview = action.payload;
+      })
+      .addCase(previewCrafting.rejected, (state) => {
+        state.previewLoading = false;
       });
   }
 });

@@ -175,7 +175,7 @@
     }
     
     .materials-list {
-      .material-row {
+      .material-slot {
         display: flex;
         align-items: center;
         gap: 12px;
@@ -183,6 +183,25 @@
         background: rgba($bg-darker, 0.3);
         border-radius: $radius-sm;
         margin-bottom: 8px;
+        cursor: grab;
+        transition: all 0.2s;
+        border: 1px solid transparent;
+        
+        &:hover {
+          border-color: $primary-color;
+          background: rgba($primary-color, 0.05);
+        }
+        
+        &.dragging {
+          opacity: 0.5;
+          cursor: grabbing;
+        }
+        
+        &.drag-over {
+          border-color: $accent-color;
+          background: rgba($accent-color, 0.1);
+          transform: scale(1.02);
+        }
         
         &.insufficient {
           background: rgba($danger-color, 0.1);
@@ -193,6 +212,30 @@
           }
         }
         
+        .drag-handle {
+          cursor: grab;
+          color: $text-muted;
+          font-size: 18px;
+          user-select: none;
+          
+          &:hover {
+            color: $primary-color;
+          }
+        }
+        
+        .slot-number {
+          width: 24px;
+          height: 24px;
+          background: rgba($primary-color, 0.2);
+          color: $primary-color;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 12px;
+          font-weight: 700;
+        }
+        
         .mat-icon {
           font-size: 24px;
         }
@@ -200,6 +243,15 @@
         .mat-name {
           flex: 1;
           font-size: 14px;
+        }
+        
+        .mat-type {
+          font-size: 10px;
+          padding: 2px 6px;
+          background: rgba($info-color, 0.2);
+          color: $info-color;
+          border-radius: 4px;
+          text-transform: uppercase;
         }
         
         .mat-rarity {
@@ -213,6 +265,47 @@
           min-width: 60px;
           text-align: right;
         }
+        
+        .move-buttons {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          
+          .move-btn {
+            width: 20px;
+            height: 18px;
+            background: rgba($bg-darker, 0.5);
+            border: 1px solid $border-color;
+            border-radius: 3px;
+            color: $text-secondary;
+            font-size: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            line-height: 1;
+            
+            &:hover:not(:disabled) {
+              background: $primary-color;
+              color: white;
+              border-color: $primary-color;
+            }
+            
+            &:disabled {
+              opacity: 0.3;
+              cursor: not-allowed;
+            }
+          }
+        }
+      }
+      
+      .materials-hint {
+        font-size: 11px;
+        color: $text-muted;
+        text-align: center;
+        margin-top: 8px;
+        font-style: italic;
       }
     }
     

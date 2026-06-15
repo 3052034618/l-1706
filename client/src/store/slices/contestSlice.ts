@@ -5,16 +5,22 @@ interface ContestState {
   currentContest: any | null;
   userEntry: any | null;
   standings: any[];
+  opponents: any[];
   history: any[];
   loading: boolean;
+  skillCooldowns: Record<string, number>;
+  activeBuffs: any[];
 }
 
 const initialState: ContestState = {
   currentContest: null,
   userEntry: null,
   standings: [],
+  opponents: [],
   history: [],
-  loading: false
+  loading: false,
+  skillCooldowns: {},
+  activeBuffs: []
 };
 
 export const fetchCurrentContest = createAsyncThunk('contest/current', async () => {
@@ -40,6 +46,11 @@ export const fetchContestHistory = createAsyncThunk('contest/history', async () 
   return response.data.history;
 });
 
+export const fetchOpponents = createAsyncThunk('contest/opponents', async () => {
+  const response = await api.get('/contest/opponents');
+  return response.data.opponents;
+});
+
 const contestSlice = createSlice({
   name: 'contest',
   initialState,
@@ -52,6 +63,17 @@ const contestSlice = createSlice({
     },
     updateStandings: (state, action) => {
       state.standings = action.payload;
+    },
+    setSkillCooldown: (state, action) => {
+      const { skillType, cooldownEnd } = action.payload;
+      state.skillCooldowns[skillType] = cooldownEnd;
+    },
+    addBuff: (state, action) => {
+      state.activeBuffs.push(action.payload);
+    },
+    clearExpiredBuffs: (state) => {
+      const now = Date.now();
+      state.activeBuffs = state.activeBuffs.filter((b: any) => b.endTime > now);
     }
   },
   extraReducers: (builder) => {
@@ -67,9 +89,26 @@ const contestSlice = createSlice({
       })
       .addCase(fetchContestHistory.fulfilled, (state, action) => {
         state.history = action.payload;
+      })
+      .addCase(fetchOpponents.fulfilled, (state, action) => {
+        state.opponents = action.payload;
+      })
+      .addCase(applyContestSkill.fulfilled, (state, action: any) => {
+        if (action.payload?.success) {
+          const skillType = action.meta.arg.skillType;
+          const cooldownEnd = Date.now() + (action.payload.cooldown || 30) * 1000;
+          state.skillCooldowns[skillType] = cooldownEnd;
+          
+          if (skillType === 'focus_boost') {
+            state.activeBuffs.push({
+              type: 'focus_boost',
+              endTime: Date.now() + (action.payload.duration || 10) * 1000
+            });
+          }
+        }
       });
   }
 });
 
-export const { updateScore, updateStandings } = contestSlice.actions;
+export const { updateScore, updateStandings, setSkillCooldown, addBuff, clearExpiredBuffs } = contestSlice.actions;
 export default contestSlice.reducer;

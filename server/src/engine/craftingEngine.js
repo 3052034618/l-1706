@@ -157,19 +157,65 @@ function getDetectorRarity(quality, affixCount) {
   return 'common';
 }
 
+const POSITION_WEIGHTS = [1.35, 1.2, 1.05, 0.95, 0.85, 0.75];
+
+const TYPE_STAT_MULTIPLIERS = {
+  crystal: { range: 1.0, precision: 0.3, quality: 0.6, affix: 0.5 },
+  resonator: { range: 0.4, precision: 1.0, quality: 0.5, affix: 0.3 },
+  core: { range: 0.6, precision: 0.6, quality: 1.0, affix: 0.4 },
+  amplifier: { range: 0.8, precision: 0.2, quality: 0.3, affix: 1.0 },
+  essence: { range: 0.3, precision: 0.3, quality: 0.4, affix: 0.8, hidden: 1.0 }
+};
+
+function getPositionWeight(index) {
+  return POSITION_WEIGHTS[Math.min(index, POSITION_WEIGHTS.length - 1)];
+}
+
 function calculateCraftingResult(recipe, materials, echosmith, workshopBonus = 0, guildBonus = 0) {
-  const materialQualities = materials.map(m => m.quality || 50);
-  const avgMaterialQuality = materialQualities.reduce((a, b) => a + b, 0) / materials.length;
-  
-  const skillFactor = (echosmith.hearing_skill + echosmith.modulation_skill + echosmith.detection_skill) / 30;
   const workshopFactor = 1 + workshopBonus;
   const guildFactor = 1 + guildBonus;
   
-  const baseQuality = avgMaterialQuality * 0.6 + skillFactor * 20 * 0.4;
+  let weightedRangeQuality = 0;
+  let weightedPrecisionQuality = 0;
+  let weightedOverallQuality = 0;
+  let weightedAffixQuality = 0;
+  let weightedHiddenQuality = 0;
+  let totalWeight = 0;
+  
+  const materialRarities = [];
+  
+  materials.forEach((mat, index) => {
+    const posWeight = getPositionWeight(index);
+    const typeMult = TYPE_STAT_MULTIPLIERS[mat.type] || { range: 0.5, precision: 0.5, quality: 0.5, affix: 0.5, hidden: 0.3 };
+    const rarityWeight = RARITY_WEIGHTS[mat.rarity] || 1;
+    const quality = mat.quality || 50;
+    
+    const effectiveQuality = quality * posWeight * (0.5 + rarityWeight * 0.15);
+    
+    weightedRangeQuality += effectiveQuality * (typeMult.range || 0.5);
+    weightedPrecisionQuality += effectiveQuality * (typeMult.precision || 0.5);
+    weightedOverallQuality += effectiveQuality * (typeMult.quality || 0.5);
+    weightedAffixQuality += effectiveQuality * (typeMult.affix || 0.5);
+    weightedHiddenQuality += effectiveQuality * (typeMult.hidden || 0.3);
+    totalWeight += posWeight;
+    
+    materialRarities.push(mat.rarity || 'common');
+  });
+  
+  const avgRangeQuality = weightedRangeQuality / totalWeight;
+  const avgPrecisionQuality = weightedPrecisionQuality / totalWeight;
+  const avgOverallQuality = weightedOverallQuality / totalWeight;
+  const avgAffixQuality = weightedAffixQuality / totalWeight;
+  const avgHiddenQuality = weightedHiddenQuality / totalWeight;
+  
+  const skillFactor = (echosmith.hearing_skill + echosmith.modulation_skill + echosmith.detection_skill) / 30;
+  const skillBonus = skillFactor * 15;
+  
+  const baseQuality = avgOverallQuality * 0.7 + skillBonus;
   const quality = Math.min(100, Math.max(1, baseQuality * workshopFactor * guildFactor));
   
-  const rangeMultiplier = quality / 50;
-  const precisionMultiplier = quality / 60;
+  const rangeMultiplier = avgRangeQuality / 50;
+  const precisionMultiplier = avgPrecisionQuality / 55;
   
   const baseRange = recipe.base_range * rangeMultiplier;
   const basePrecision = recipe.base_precision * precisionMultiplier;
@@ -177,13 +223,12 @@ function calculateCraftingResult(recipe, materials, echosmith, workshopBonus = 0
   const range = Math.floor(baseRange * workshopFactor * guildFactor);
   const precision = Math.min(100, Math.floor(basePrecision * workshopFactor * guildFactor));
   
-  const materialRarities = materials.map(m => m.rarity || 'common');
   const maxAffixes = Math.floor(quality / 30) + 1;
-  const affixes = rollAffixes(quality, echosmith, materialRarities, maxAffixes);
+  const affixes = rollAffixes(avgAffixQuality, echosmith, materialRarities, maxAffixes);
   
   const rarity = getDetectorRarity(quality, affixes.length);
   
-  const hiddenAttributes = calculateHiddenAttributes(quality, materials, echosmith.modulation_skill);
+  const hiddenAttributes = calculateHiddenAttributes(avgHiddenQuality, materials, echosmith.modulation_skill);
   
   return {
     quality: Math.floor(quality),
@@ -192,6 +237,71 @@ function calculateCraftingResult(recipe, materials, echosmith, workshopBonus = 0
     rarity,
     affixes,
     hiddenAttributes,
+    tier: recipe.tier,
+    materialOrder: materials.map(m => m.id || m.material_id)
+  };
+}
+
+function estimateCraftingResult(recipe, materials, echosmith, workshopBonus = 0, guildBonus = 0) {
+  const workshopFactor = 1 + workshopBonus;
+  const guildFactor = 1 + guildBonus;
+  
+  let weightedRangeQuality = 0;
+  let weightedPrecisionQuality = 0;
+  let weightedOverallQuality = 0;
+  let weightedAffixQuality = 0;
+  let weightedHiddenQuality = 0;
+  let totalWeight = 0;
+  
+  materials.forEach((mat, index) => {
+    const posWeight = getPositionWeight(index);
+    const typeMult = TYPE_STAT_MULTIPLIERS[mat.type] || { range: 0.5, precision: 0.5, quality: 0.5, affix: 0.5, hidden: 0.3 };
+    const rarityWeight = RARITY_WEIGHTS[mat.rarity] || 1;
+    const quality = mat.quality || 50;
+    
+    const effectiveQuality = quality * posWeight * (0.5 + rarityWeight * 0.15);
+    
+    weightedRangeQuality += effectiveQuality * (typeMult.range || 0.5);
+    weightedPrecisionQuality += effectiveQuality * (typeMult.precision || 0.5);
+    weightedOverallQuality += effectiveQuality * (typeMult.quality || 0.5);
+    weightedAffixQuality += effectiveQuality * (typeMult.affix || 0.5);
+    weightedHiddenQuality += effectiveQuality * (typeMult.hidden || 0.3);
+    totalWeight += posWeight;
+  });
+  
+  const avgRangeQuality = weightedRangeQuality / totalWeight;
+  const avgPrecisionQuality = weightedPrecisionQuality / totalWeight;
+  const avgOverallQuality = weightedOverallQuality / totalWeight;
+  const avgAffixQuality = weightedAffixQuality / totalWeight;
+  const avgHiddenQuality = weightedHiddenQuality / totalWeight;
+  
+  const skillFactor = (echosmith.hearing_skill + echosmith.modulation_skill + echosmith.detection_skill) / 30;
+  const skillBonus = skillFactor * 15;
+  
+  const baseQuality = avgOverallQuality * 0.7 + skillBonus;
+  const quality = Math.min(100, Math.max(1, baseQuality * workshopFactor * guildFactor));
+  
+  const rangeMultiplier = avgRangeQuality / 50;
+  const precisionMultiplier = avgPrecisionQuality / 55;
+  
+  const baseRange = recipe.base_range * rangeMultiplier;
+  const basePrecision = recipe.base_precision * precisionMultiplier;
+  
+  const range = Math.floor(baseRange * workshopFactor * guildFactor);
+  const precision = Math.min(100, Math.floor(basePrecision * workshopFactor * guildFactor));
+  
+  const affixChance = calculateAffixTrigger(avgAffixQuality, echosmith.detection_skill, materials.map(m => m.rarity || 'common'));
+  const hiddenChance = Math.min(0.5, (avgHiddenQuality / 200) * (echosmith.modulation_skill / 10));
+  
+  const estimatedRarity = getDetectorRarity(quality, Math.floor(quality / 30));
+  
+  return {
+    quality: Math.floor(quality),
+    range,
+    precision,
+    rarity: estimatedRarity,
+    affixChance: Math.min(0.95, affixChance * 100 / 8),
+    hiddenChance: Math.floor(hiddenChance * 100),
     tier: recipe.tier
   };
 }
@@ -201,9 +311,12 @@ module.exports = {
   RARITY_WEIGHTS,
   RARITY_COLORS,
   QUALITY_RANGES,
+  POSITION_WEIGHTS,
+  TYPE_STAT_MULTIPLIERS,
   calculateAffixTrigger,
   rollAffixes,
   calculateHiddenAttributes,
   getDetectorRarity,
-  calculateCraftingResult
+  calculateCraftingResult,
+  estimateCraftingResult
 };

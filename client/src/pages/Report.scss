@@ -33,22 +33,46 @@
     .report-subtitle {
       color: $text-muted;
       font-size: 14px;
+      
+      .last-update {
+        color: $info-color;
+        font-size: 12px;
+      }
     }
     
+    .header-actions {
+      display: flex;
+      gap: 12px;
+    }
+    
+    .refresh-btn,
     .export-btn {
-      padding: 12px 24px;
-      background: linear-gradient(135deg, $success-color, $info-color);
-      color: white;
+      padding: 10px 20px;
       border: none;
       border-radius: $radius-sm;
       font-size: 14px;
       font-weight: 600;
       cursor: pointer;
+      transition: all 0.2s;
       
       &:hover {
         transform: translateY(-2px);
         box-shadow: $shadow-md;
       }
+    }
+    
+    .refresh-btn {
+      background: $bg-card;
+      color: $text-primary;
+      
+      &:hover {
+        background: $bg-card-hover;
+      }
+    }
+    
+    .export-btn {
+      background: linear-gradient(135deg, $success-color, $info-color);
+      color: white;
     }
   }
   
@@ -109,6 +133,21 @@
           max-width: 400px;
           margin: 0 auto;
         }
+        
+        &.small {
+          height: 250px;
+        }
+      }
+      
+      .empty-chart {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 250px;
+        color: $text-muted;
+        font-size: 14px;
+        background: $bg-darker;
+        border-radius: $radius-sm;
       }
       
       &.wide {
@@ -142,6 +181,10 @@
           font-size: 18px;
           font-weight: 700;
           color: $warning-color;
+          
+          &.rank-1 { color: #f59e0b; }
+          &.rank-2 { color: #9ca3af; }
+          &.rank-3 { color: #d97706; }
         }
         
         .detector-info {
@@ -150,7 +193,7 @@
           .detector-name {
             display: block;
             font-size: 15px;
-            font-weight: 500;
+            font-weight: 600;
             margin-bottom: 2px;
           }
           
@@ -160,11 +203,26 @@
           }
         }
         
-        .detector-quality {
-          font-size: 14px;
-          font-weight: 600;
-          color: $success-color;
+        .detector-stats {
+          display: flex;
+          gap: 16px;
+          
+          span {
+            font-size: 13px;
+            color: $text-secondary;
+            
+            &:last-child {
+              font-weight: 500;
+            }
+          }
         }
+      }
+      
+      .empty-detectors {
+        text-align: center;
+        padding: 40px;
+        color: $text-muted;
+        font-size: 14px;
       }
     }
   }

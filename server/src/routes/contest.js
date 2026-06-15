@@ -76,45 +76,30 @@ router.get('/standings/:contestId', authMiddleware, (req, res) => {
 
 router.post('/skill', authMiddleware, (req, res) => {
   const { skillType, targetEntryId } = req.body;
-  const db = getDb();
   
-  const today = new Date().toISOString().split('T')[0];
-  const contest = db.prepare('SELECT * FROM contests WHERE date = ?').get(today);
-  
-  if (!contest || contest.status !== 'active') {
-    return res.status(400).json({ error: '比赛未进行中' });
+  if (!gameEngine) {
+    return res.status(500).json({ error: '游戏引擎未初始化' });
   }
   
-  const entry = db.prepare(`
-    SELECT * FROM contest_entries 
-    WHERE contest_id = ? AND player_id = ?
-  `).get(contest.id, req.userId);
-  
-  if (!entry) {
-    return res.status(400).json({ error: '未参加比赛' });
+  try {
+    const result = gameEngine.useContestSkill(req.userId, skillType, targetEntryId);
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+router.get('/opponents', authMiddleware, (req, res) => {
+  if (!gameEngine) {
+    return res.status(500).json({ error: '游戏引擎未初始化' });
   }
   
-  let targetEntry = null;
-  if (skillType === 'interference_pulse' && targetEntryId) {
-    targetEntry = db.prepare('SELECT * FROM contest_entries WHERE id = ?').get(targetEntryId);
+  try {
+    const opponents = gameEngine.getMatchedOpponents(req.userId);
+    res.json({ opponents });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
-  
-  const result = contestEngine.applySkill(entry, skillType, targetEntry);
-  
-  if (!result?.success) {
-    return res.status(400).json({ error: result?.reason || '技能使用失败' });
-  }
-  
-  if (global.io) {
-    global.io.to(`contest_${contest.id}`).emit('skill_used', {
-      entryId: entry.id,
-      skillType,
-      effect: result.effect,
-      timestamp: Date.now()
-    });
-  }
-  
-  res.json({ success: true, ...result });
 });
 
 router.get('/history', authMiddleware, (req, res) => {

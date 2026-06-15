@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { store } from '../store';
 import { completeCrafting } from '../store/slices/craftingSlice';
-import { updateScore } from '../store/slices/contestSlice';
+import { updateScore, updateStandings, addBuff } from '../store/slices/contestSlice';
 
 let socket: Socket | null = null;
 
@@ -33,6 +33,26 @@ export const initSocket = () => {
 
   socket.on('score_update', (data: any) => {
     store.dispatch(updateScore(data));
+  });
+
+  socket.on('contest_update', (data: any) => {
+    console.log('🏆 大赛更新:', data);
+    store.dispatch(updateStandings(data.standings));
+    
+    const state = store.getState();
+    const userEntryId = state.contest.userEntry?.id;
+    const userStanding = data.standings.find((s: any) => s.id === userEntryId);
+    if (userStanding) {
+      store.dispatch(updateScore({
+        entryId: userEntryId,
+        score: userStanding.score,
+        intensity: userStanding.current_intensity
+      }));
+    }
+  });
+
+  socket.on('skill_used', (data: any) => {
+    console.log('⚡ 技能使用:', data);
   });
 
   socket.on('contest_started', (data: any) => {
