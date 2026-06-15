@@ -40,14 +40,14 @@ router.get('/current', authMiddleware, (req, res) => {
 });
 
 router.post('/join', authMiddleware, (req, res) => {
-  const { detectorId } = req.body;
+  const { detector_id, contest_id } = req.body;
   
   if (!gameEngine) {
     return res.status(500).json({ error: '游戏引擎未初始化' });
   }
   
   try {
-    const result = gameEngine.joinContest(req.userId, detectorId);
+    const result = gameEngine.joinContest(req.userId, detector_id, contest_id);
     res.json({ success: true, ...result });
   } catch (error) {
     res.status(400).json({ error: error.message });

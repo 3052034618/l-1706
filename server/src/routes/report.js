@@ -142,19 +142,31 @@ function calculatePriceTrends(weekTransactions, db) {
   weekTransactions.forEach(t => {
     try {
       const itemData = JSON.parse(t.item_data || '{}');
-      const materialId = itemData.material_id;
-      if (!materialId) return;
+      let itemKey = null;
+      let itemName = null;
+      let itemType = t.item_type;
       
-      if (!priceMap[materialId]) {
-        priceMap[materialId] = {
-          id: materialId,
-          name: materialMap[materialId]?.name || materialId,
+      if (itemType === 'material' && itemData.material_id) {
+        itemKey = `mat_${itemData.material_id}`;
+        itemName = materialMap[itemData.material_id]?.name || itemData.material_id;
+      } else if (itemType === 'detector' && itemData.id) {
+        itemKey = `det_${itemData.id}`;
+        itemName = itemData.name || `${itemData.rarity || '普通'}探测器`;
+      }
+      
+      if (!itemKey) return;
+      
+      if (!priceMap[itemKey]) {
+        priceMap[itemKey] = {
+          id: itemKey,
+          itemType,
+          name: itemName,
           total_price: 0,
           volume: 0
         };
       }
-      priceMap[materialId].total_price += (t.price || 0);
-      priceMap[materialId].volume += 1;
+      priceMap[itemKey].total_price += (t.price || 0);
+      priceMap[itemKey].volume += 1;
     } catch (e) {}
   });
   
@@ -172,25 +184,33 @@ function calculateDailyPriceData(weekTransactions, weekStart, db) {
   const materialMap = Object.fromEntries(allMaterials.map(m => [m.id, m]));
   
   const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-  const dailyMaterialTotals = {};
-  const dailyMaterialCounts = {};
-  const topMaterialIds = new Set();
+  const dailyItemTotals = {};
+  const dailyItemCounts = {};
+  const topItemKeys = new Set();
   
-  const totalsByMaterial = {};
+  const totalsByItem = {};
   weekTransactions.forEach(t => {
     try {
       const itemData = JSON.parse(t.item_data || '{}');
-      if (itemData.material_id) {
-        totalsByMaterial[itemData.material_id] = (totalsByMaterial[itemData.material_id] || 0) + 1;
+      let itemKey = null;
+      
+      if (t.item_type === 'material' && itemData.material_id) {
+        itemKey = `mat_${itemData.material_id}`;
+      } else if (t.item_type === 'detector' && itemData.id) {
+        itemKey = `det_${itemData.id}`;
+      }
+      
+      if (itemKey) {
+        totalsByItem[itemKey] = (totalsByItem[itemKey] || 0) + 1;
       }
     } catch (e) {}
   });
   
-  const topMaterials = Object.entries(totalsByMaterial)
+  const topItems = Object.entries(totalsByItem)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([id]) => id);
-  topMaterials.forEach(id => topMaterialIds.add(id));
+  topItems.forEach(id => topItemKeys.add(id));
   
   for (let i = 0; i < 7; i++) {
     const dayStart = weekStart + i * 24 * 60 * 60 * 1000;
@@ -200,31 +220,54 @@ function calculateDailyPriceData(weekTransactions, weekStart, db) {
       t.timestamp >= dayStart && t.timestamp < dayEnd
     );
     
-    topMaterialIds.forEach(matId => {
-      if (!dailyMaterialTotals[matId]) dailyMaterialTotals[matId] = Array(7).fill(0);
-      if (!dailyMaterialCounts[matId]) dailyMaterialCounts[matId] = Array(7).fill(0);
+    topItemKeys.forEach(itemKey => {
+      if (!dailyItemTotals[itemKey]) dailyItemTotals[itemKey] = Array(7).fill(0);
+      if (!dailyItemCounts[itemKey]) dailyItemCounts[itemKey] = Array(7).fill(0);
       
-      const todayMatTransactions = dayTransactions.filter(t => {
+      const todayItemTransactions = dayTransactions.filter(t => {
         try {
           const itemData = JSON.parse(t.item_data || '{}');
-          return itemData.material_id === matId;
+          if (itemKey.startsWith('mat_') && t.item_type === 'material') {
+            return `mat_${itemData.material_id}` === itemKey;
+          } else if (itemKey.startsWith('det_') && t.item_type === 'detector') {
+            return `det_${itemData.id}` === itemKey;
+          }
+          return false;
         } catch (e) { return false; }
       });
       
-      const dayPrices = todayMatTransactions.map(t => t.price || 0);
+      const dayPrices = todayItemTransactions.map(t => t.price || 0);
       if (dayPrices.length > 0) {
-        dailyMaterialTotals[matId][i] = dayPrices.reduce((a, b) => a + b, 0);
-        dailyMaterialCounts[matId][i] = dayPrices.length;
+        dailyItemTotals[itemKey][i] = dayPrices.reduce((a, b) => a + b, 0);
+        dailyItemCounts[itemKey][i] = dayPrices.length;
       }
     });
   }
   
+  const getItemName = (itemKey) => {
+    if (itemKey.startsWith('mat_')) {
+      const matId = itemKey.substring(4);
+      return materialMap[matId]?.name || matId;
+    } else if (itemKey.startsWith('det_')) {
+      for (const t of weekTransactions) {
+        try {
+          const itemData = JSON.parse(t.item_data || '{}');
+          if (`det_${itemData.id}` === itemKey) {
+            return itemData.name || '探测器';
+          }
+        } catch (e) {}
+      }
+      return '探测器';
+    }
+    return itemKey;
+  };
+  
   const colors = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6'];
-  const datasets = topMaterials.map((matId, index) => ({
-    name: materialMap[matId]?.name || matId,
+  const datasets = topItems.map((itemKey, index) => ({
+    name: getItemName(itemKey),
     data: Array.from({ length: 7 }, (_, i) => {
-      const count = dailyMaterialCounts[matId]?.[i] || 0;
-      const total = dailyMaterialTotals[matId]?.[i] || 0;
+      const count = dailyItemCounts[itemKey]?.[i] || 0;
+      const total = dailyItemTotals[itemKey]?.[i] || 0;
       return count > 0 ? Math.floor(total / count) : 0;
     }),
     color: colors[index % colors.length]

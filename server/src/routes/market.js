@@ -209,7 +209,7 @@ router.get('/suggested-price', authMiddleware, (req, res) => {
   };
   
   const suggested = calculateSuggestedPrice(itemType, itemData);
-  const trend = getPriceTrend(itemType, itemId);
+  const trend = getPriceTrend(itemType, itemId, 7, itemData);
   
   res.json({ suggested, trend });
 });

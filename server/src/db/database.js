@@ -223,8 +223,52 @@ function _parseWhereConditions(whereStr) {
   return conditions;
 }
 
+function _parseSelectFields(sql) {
+  const selectMatch = sql.match(/SELECT\s+([\s\S]+?)\s+FROM/i);
+  if (!selectMatch) return [];
+  
+  const selectClause = selectMatch[1];
+  const fields = [];
+  
+  const parts = selectClause.split(',').map(p => p.trim());
+  
+  parts.forEach(part => {
+    if (part === '*' || part.endsWith('.*')) {
+      const aliasMatch = part.match(/^(\w+)\.\*$/);
+      fields.push({
+        type: 'wildcard',
+        tableAlias: aliasMatch ? aliasMatch[1] : null
+      });
+    } else {
+      const asMatch = part.match(/^([\w.]+)\s+AS\s+(\w+)$/i) || part.match(/^([\w.]+)\s+(\w+)$/i);
+      if (asMatch) {
+        const fieldRaw = asMatch[1];
+        const alias = asMatch[2];
+        const tableMatch = fieldRaw.match(/^(\w+)\.(\w+)$/);
+        fields.push({
+          type: 'field',
+          tableAlias: tableMatch ? tableMatch[1] : null,
+          field: tableMatch ? tableMatch[2] : fieldRaw,
+          alias: alias
+        });
+      } else {
+        const tableMatch = part.match(/^(\w+)\.(\w+)$/);
+        fields.push({
+          type: 'field',
+          tableAlias: tableMatch ? tableMatch[1] : null,
+          field: tableMatch ? tableMatch[2] : part,
+          alias: null
+        });
+      }
+    }
+  });
+  
+  return fields;
+}
+
 function _applyJoins(sql, rows) {
   const joinRegex = /JOIN\s+(\w+)(?:\s+(\w+))?\s+ON\s+([\w.]+)\s*=\s*([\w.]+)/gi;
+  const selectFields = _parseSelectFields(sql);
   let match;
   let result = [...rows];
   
@@ -241,10 +285,29 @@ function _applyJoins(sql, rows) {
     
     const joinRows = db[joinTableName];
     
+    const joinFieldAliases = {};
+    selectFields.forEach(f => {
+      if (f.type === 'field' && f.tableAlias === joinTableAlias && f.alias) {
+        joinFieldAliases[f.field] = f.alias;
+      }
+    });
+    
+    const selectAllFromJoin = selectFields.some(f => f.type === 'wildcard' && (f.tableAlias === null || f.tableAlias === joinTableAlias));
+    
     result = result.map(row => {
       const matched = joinRows.find(jr => jr[rightField] === row[leftField]);
       if (matched) {
-        return { ...row, ...matched };
+        const merged = { ...row };
+        Object.keys(matched).forEach(key => {
+          if (joinFieldAliases[key]) {
+            merged[joinFieldAliases[key]] = matched[key];
+          } else if (selectAllFromJoin) {
+            merged[key] = matched[key];
+          } else if (!merged.hasOwnProperty(key)) {
+            merged[key] = matched[key];
+          }
+        });
+        return merged;
       }
       return row;
     });
@@ -428,9 +491,6 @@ function prepare(sql) {
                     default: return rowValue === value;
                   }
                 })();
-                if (tableName === 'player_materials') {
-                  console.log(`[DBG-WHERE] cond: field=${cond.field}, op=${cond.op}, condValue=${JSON.stringify(value)}, rowValue=${JSON.stringify(rowValue)}, isParam=${cond.isParam}, paramIdx=${cond.paramIdx}, result=${opResult}`);
-                }
                 return opResult;
               });
             }
@@ -441,8 +501,6 @@ function prepare(sql) {
                 if (setField.isParam) {
                   const expr = setField.expression;
                   const paramValue = params[paramIdx++];
-                  
-                  console.log(`[DBG-UPDATE] table=${tableName}, field=${setField.field}, expr=${expr}, paramValue=${paramValue}, paramIdx=${paramIdx-1}, allParams=`, JSON.stringify(params));
                   
                   if (expr === '?') {
                     row[setField.field] = paramValue;
@@ -473,7 +531,6 @@ function prepare(sql) {
                         case '*': row[setField.field] = currentValue * paramValue; break;
                         case '/': row[setField.field] = paramValue !== 0 ? currentValue / paramValue : 0; break;
                       }
-                      console.log(`[DBG-UPDATE-RESULT] op=${operator}, currentValue=${currentValue}, newValue=${row[setField.field]}`);
                     } else {
                       row[setField.field] = paramValue;
                     }
@@ -597,16 +654,12 @@ function prepare(sql) {
       
       if (tableName && db[tableName]) {
         let result = [...db[tableName]];
-        console.log('[DBG-ALL] initial rows:', result.length);
         result = _applyJoins(sql, result);
-        console.log('[DBG-ALL] after JOIN rows:', result.length, 'firstRow materials:', result[0] ? JSON.stringify(result[0].material_id) : null);
         
         const whereMatch = sql.match(/WHERE\s+([\s\S]+?)(?:ORDER BY|LIMIT|$)/i);
         if (whereMatch) {
           const conditions = _parseWhereConditions(whereMatch[1]);
-          console.log('[DBG-ALL] where conditions:', JSON.stringify(conditions), 'params:', params);
           const filtered = _applyConditions(result, conditions, params);
-          console.log('[DBG-ALL] after WHERE rows:', filtered.result.length, 'filtered.paramIdx:', filtered.paramIdx);
           result = filtered.result;
         }
         

@@ -28,10 +28,9 @@ router.get('/materials', authMiddleware, (req, res) => {
     SELECT pm.*, m.name, m.type, m.rarity, m.icon, m.description, m.quality as base_quality
     FROM player_materials pm
     JOIN materials m ON pm.material_id = m.id
-    WHERE pm.player_id = ?
+    WHERE pm.player_id = ? AND pm.quantity > 0
   `).all(req.userId);
   
-  console.log('[DBG-MATERIALS] userId=', req.userId, 'materials=', JSON.stringify(materials));
   res.json({ materials });
 });
 

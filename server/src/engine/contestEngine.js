@@ -24,10 +24,11 @@ function calculateBaseScore(detector, soundWaveData) {
   
   const frequencyScore = soundWaveData.frequency * (detector.precision / 50);
   
-  const intensityScore = soundWaveData.baseIntensity * (detector.range / 100);
+  const intensityScore = soundWaveData.intensity * (detector.range / 100);
   
   let affixBonus = 1;
-  detector.affixes?.forEach(affixId => {
+  const affixes = typeof detector.affixes === 'string' ? JSON.parse(detector.affixes) : (detector.affixes || []);
+  affixes.forEach(affixId => {
     const affix = AFFIXES[affixId];
     if (affix?.effect?.intensityBonus) {
       affixBonus += affix.effect.intensityBonus;
@@ -54,7 +55,8 @@ function calculateAudienceResonance(detector, currentScore, contestDuration) {
   const rarityBonus = (RARITY_WEIGHTS[detector.rarity] || 1) * 10;
   resonance += rarityBonus;
   
-  if (detector.affixes?.includes('harmony')) {
+  const affixes = typeof detector.affixes === 'string' ? JSON.parse(detector.affixes) : (detector.affixes || []);
+  if (affixes?.includes('harmony')) {
     resonance *= 1.3;
   }
   

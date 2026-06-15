@@ -82,7 +82,7 @@ function getDefaultPrice(itemType, itemData) {
   return { min: 100, max: 200, average: 150, sampleSize: 0 };
 }
 
-function getPriceTrend(itemType, itemId, days = 7) {
+function getPriceTrend(itemType, itemId, days = 7, itemData = {}) {
   const db = getDb();
   const startTime = Date.now() - days * 24 * 60 * 60 * 1000;
   
@@ -96,14 +96,19 @@ function getPriceTrend(itemType, itemId, days = 7) {
       AND timestamp > ?
       ORDER BY timestamp ASC
     `).all(itemId, startTime);
-  } else {
+  } else if (itemType === 'detector') {
+    const tier = itemData.tier || 1;
+    const rarity = itemData.rarity || 'common';
     transactions = db.prepare(`
       SELECT price, timestamp FROM market_transactions
-      WHERE item_type = ?
-      AND JSON_EXTRACT(item_data, '$.id') = ?
+      WHERE item_type = 'detector'
+      AND JSON_EXTRACT(item_data, '$.tier') = ?
+      AND JSON_EXTRACT(item_data, '$.rarity') = ?
       AND timestamp > ?
       ORDER BY timestamp ASC
-    `).all(itemType, itemId, startTime);
+    `).all(tier, rarity, startTime);
+  } else {
+    transactions = [];
   }
   
   const dailyPrices = {};
